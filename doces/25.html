@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STM32Cube Bootloader开发与IAP固件升级从入门到精通 - 第25章 系统集成与测试</title>
+    <style>
+@import url('https://fonts.loli.net/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+    --primary: #4db8a4;
+    --primary-dark: #3a9e8c;
+    --primary-light: #6fcfbe;
+    --accent: #45a899;
+    --accent-light: #a8e6db;
+    --gradient-main: linear-gradient(135deg, #4db8a4, #5ec6b4);
+    --gradient-soft: linear-gradient(135deg, #4db8a4 0%, #5ec6b4 50%, #7dd4c6 100%);
+    --gradient-header: linear-gradient(135deg, #4db8a4, #62c9b8, #7dd4c6);
+    --gradient-header-dark: linear-gradient(135deg, #2a7d6e, #358f7f, #4db8a4);
+    --bg-page: #f6f8fa;
+    --bg-white: #ffffff;
+    --bg-gray-50: #f8f9fb;
+    --bg-gray-100: #f0f2f5;
+    --bg-green-50: #edf9f5;
+    --bg-teal-50: #f0faf7;
+    --text-primary: #1f2937;
+    --text-secondary: #4b5563;
+    --text-muted: #9ca3af;
+    --border-light: #e5e7eb;
+    --border-default: #d1d5db;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+    --shadow-card-hover: 0 4px 12px rgba(77,184,164,0.12), 0 2px 4px rgba(0,0,0,0.04);
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: var(--bg-page);
+    color: var(--text-primary);
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", 'Segoe UI', sans-serif;
+    line-height: 1.8;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ━━━ 目录页 ━━━ */
+.catalog-container { max-width: 900px; margin: 0 auto; padding: 0 24px 30px; }
+
+.catalog-hero {
+    text-align: center; padding: 30px 30px 22px;
+    background: var(--gradient-header);
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+    margin-bottom: 20px; position: relative; overflow: hidden;
+}
+.catalog-hero::before {
+    content: ''; position: absolute; top: -50%; right: -15%;
+    width: 260px; height: 260px;
+    background: radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.catalog-hero::after {
+    content: ''; position: absolute; bottom: -40%; left: -8%;
+    width: 180px; height: 180px;
+    background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.catalog-hero h1 { font-size: 26px; font-weight: 700; color: #fff; letter-spacing: 1px; margin-bottom: 8px; position: relative; z-index: 1; }
+.catalog-hero .subtitle { color: rgba(255,255,255,0.85); font-size: 18px; font-weight: 500; letter-spacing: 2px; position: relative; z-index: 1; }
+
+/* 统计数据条 */
+.stats-bar {
+    display: flex; justify-content: center; gap: 24px;
+    padding: 14px 20px; background: var(--bg-white);
+    border: 1px solid var(--border-light); border-radius: var(--radius-lg);
+    margin-bottom: 16px; box-shadow: var(--shadow-card);
+}
+.stats-item { text-align: center; }
+.stats-number { font-size: 22px; font-weight: 700; color: var(--primary); line-height: 1.2; }
+.stats-label { font-size: 12px; color: var(--text-muted); letter-spacing: 0.5px; }
+
+/* 4列网格 */
+.catalog-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+.catalog-card-link { text-decoration: none; color: inherit; display: block; }
+.catalog-card-link:visited { color: inherit; }
+
+.catalog-card {
+    background: var(--bg-white); border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg); padding: 14px 14px 10px;
+    transition: all 0.2s ease; box-shadow: var(--shadow-card);
+    display: flex; flex-direction: column; height: 100%;
+}
+.catalog-card:hover {
+    border-color: rgba(77,184,164,0.35);
+    box-shadow: var(--shadow-card-hover); transform: translateY(-2px);
+}
+
+.card-number {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 7px;
+    background: #fef0ef; color: #e8564a;
+    font-size: 12px; font-weight: 700; margin-bottom: 6px; flex-shrink: 0;
+}
+.card-title { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; line-height: 1.35; min-height: 38px; }
+.card-points { list-style: none; padding: 0; margin: 0 0 6px 0; flex-grow: 1; }
+.card-points li { font-size: 12px; color: var(--text-secondary); line-height: 1.4; padding: 1px 0 1px 14px; position: relative; }
+.card-points li::before { content: '▸'; position: absolute; left: 0; color: var(--primary); font-size: 12px; font-weight: 700; }
+.card-action {
+    display: inline-block; font-size: 12px; font-weight: 600; color: #fff;
+    background: var(--primary); padding: 4px 14px; border-radius: 4px;
+    margin-top: 6px; transition: background 0.2s; text-align: center;
+}
+.catalog-card:hover .card-action { background: var(--primary-dark); }
+
+/* ━━━ 章节内容页 ━━━ */
+.chapter-container { max-width: 880px; margin: 0 auto; padding: 48px 40px; background: var(--bg-white); }
+
+.chapter-header {
+    background: var(--gradient-header); border-radius: var(--radius-lg);
+    padding: 28px 32px; margin-bottom: 32px; position: relative; overflow: hidden;
+}
+.chapter-header::before {
+    content: ''; position: absolute; top: -60%; right: -15%;
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.chapter-header h2 { color: #fff; font-size: 22px; font-weight: 700; letter-spacing: 0.5px; position: relative; z-index: 1; }
+
+/* ── 导读卡片 ── */
+.chapter-guide {
+    background: var(--bg-white); border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg); overflow: hidden;
+    margin-bottom: 28px; box-shadow: var(--shadow-card);
+}
+.guide-meta {
+    display: flex; align-items: center; flex-wrap: wrap;
+    background: var(--bg-gray-50); border-bottom: 1px solid var(--border-light); padding: 0;
+}
+.guide-meta-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 11px 18px; font-size: 13px; color: var(--text-secondary);
+    border-right: 1px solid var(--border-light); white-space: nowrap; line-height: 1;
+}
+.guide-meta-item:last-child { border-right: none; }
+.guide-meta-item .meta-icon { font-size: 14px; flex-shrink: 0; }
+.guide-body { padding: 18px 24px 20px; }
+.guide-learn { margin-bottom: 14px; }
+.guide-learn-label {
+    font-size: 13px; font-weight: 700; color: var(--primary);
+    letter-spacing: 1.5px; margin-bottom: 8px; display: block;
+}
+.guide-learn-label::before {
+    content: ''; display: inline-block; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--primary); margin-right: 8px; vertical-align: middle;
+}
+.guide-learn ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 24px; }
+.guide-learn li { font-size: 14px; color: var(--text-secondary); line-height: 1.7; padding-left: 16px; position: relative; }
+.guide-learn li::before { content: '▸'; position: absolute; left: 0; color: var(--accent-light); font-weight: 700; font-size: 14px; }
+.guide-concepts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.guide-concepts-label {
+    font-size: 13px; font-weight: 700; color: var(--primary);
+    letter-spacing: 1.5px; margin-right: 4px;
+}
+.guide-concepts-label::before {
+    content: ''; display: inline-block; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--primary); margin-right: 8px; vertical-align: middle;
+}
+.guide-concept-tag {
+    display: inline-block; background: var(--bg-green-50);
+    border: 1px solid rgba(77,184,164,0.2);
+    color: var(--primary-dark); padding: 3px 12px; border-radius: 14px;
+    font-size: 13px; font-weight: 500;
+}
+
+.chapter-content { padding: 0; }
+.chapter-content h3 {
+    color: var(--text-primary); font-size: 17px; font-weight: 700;
+    margin: 32px 0 14px 0; padding: 10px 16px;
+    background: var(--bg-green-50); border-left: 3px solid var(--primary);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.chapter-content h4 {
+    color: var(--text-primary); font-size: 15px; font-weight: 600;
+    margin: 22px 0 10px 0; padding-bottom: 6px; border-bottom: 1px solid var(--border-light);
+}
+.chapter-content p { color: var(--text-secondary); line-height: 1.85; margin-bottom: 14px; text-align: justify; }
+.chapter-content ul, .chapter-content ol { margin: 12px 0 16px 0; padding-left: 22px; color: var(--text-secondary); }
+.chapter-content li { margin-bottom: 6px; line-height: 1.7; padding-left: 4px; }
+.chapter-content li::marker { color: var(--primary); font-weight: 600; }
+
+/* ── 核心概念 / 重点知识 ── */
+.concept-block {
+    background: var(--bg-green-50); border: 1px solid rgba(77,184,164,0.15);
+    border-radius: var(--radius-md); padding: 18px 22px; margin: 18px 0;
+}
+.concept-block h4 { color: var(--primary-dark); border-bottom: none; margin-top: 0; padding-bottom: 4px; }
+.key-point {
+    background: var(--bg-teal-50); border: 1px solid rgba(69,168,153,0.15);
+    border-radius: var(--radius-md); padding: 18px 22px; margin: 18px 0;
+}
+.key-point h4 { color: var(--accent); border-bottom: none; margin-top: 0; }
+
+/* ── 提示框 ── */
+.tip-box {
+    background: var(--bg-gray-50); border: 1px solid var(--border-light);
+    border-left: 3px solid var(--primary);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 14px 18px; margin: 18px 0;
+}
+.tip-box::before {
+    content: 'TIP'; display: inline-block; font-weight: 700; color: var(--primary);
+    font-size: 11px; letter-spacing: 2px; margin-bottom: 5px;
+    padding: 1px 7px; background: var(--bg-green-50); border-radius: 3px;
+}
+.tip-box.warning { border-left-color: #f59e0b; background: #fffbeb; }
+.tip-box.warning::before { content: 'CAUTION'; color: #d97706; background: #fef3c7; }
+.tip-box.important { border-left-color: #ef4444; background: #fef2f2; }
+.tip-box.important::before { content: 'IMPORTANT'; color: #dc2626; background: #fee2e2; }
+
+/* ── 代码块 + 语法高亮 ── */
+pre {
+    background: #1a2332; border-radius: var(--radius-md); margin: 18px 0;
+    overflow: hidden; border: 1px solid #243447;
+}
+pre .code-header {
+    background: #243447; padding: 7px 14px; font-size: 12px; color: #8ba4b8;
+    font-family: 'JetBrains Mono', monospace; border-bottom: 1px solid #2d4052;
+}
+pre code {
+    display: block; padding: 16px 20px;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.6; color: #e2e8f0; overflow-x: auto;
+}
+pre code .kw { color: #c792ea; }
+pre code .str { color: #c3e88d; }
+pre code .cmt { color: #546e7a; font-style: italic; }
+pre code .num { color: #f78c6c; }
+pre code .func { color: #82aaff; }
+
+/* ── 表格 ── */
+table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    margin: 20px 0; border-radius: var(--radius-md); overflow: hidden;
+    border: 1px solid var(--border-light); font-size: 14px;
+}
+thead th {
+    background: var(--gradient-header); color: #fff; font-weight: 600;
+    padding: 11px 16px; text-align: left; font-size: 13px;
+}
+tbody td { padding: 10px 16px; border-bottom: 1px solid var(--border-light); color: var(--text-secondary); line-height: 1.5; }
+tbody tr:nth-child(odd) { background: var(--bg-white); }
+tbody tr:nth-child(even) { background: var(--bg-gray-50); }
+tbody tr:hover { background: var(--bg-green-50); }
+tbody tr:last-child td { border-bottom: none; }
+
+/* ── 小结框 ── */
+.summary-box {
+    background: var(--bg-white); border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg); padding: 22px 26px; margin-top: 36px;
+    position: relative; box-shadow: var(--shadow-sm);
+}
+.summary-box::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--gradient-soft); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.summary-box h3 { color: var(--primary-dark) !important; border-left: none !important; background: none !important; padding: 0 !important; margin: 0 0 12px 0 !important; font-size: 15px !important; }
+.summary-box ul { list-style: none; padding-left: 0; margin-left: 0; }
+.summary-box li { padding-left: 20px; position: relative; color: var(--text-secondary); margin-bottom: 6px; }
+.summary-box li::before { content: '→'; position: absolute; left: 0; color: var(--primary); font-weight: 600; }
+
+/* ── 流程图 ── */
+.flowchart {
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0;
+    margin: 20px 0; padding: 24px 20px; background: var(--bg-white);
+    border-radius: var(--radius-md); border: 1px solid var(--border-light);
+}
+.flow-step {
+    background: var(--bg-green-50); border: 1px solid rgba(77,184,164,0.2);
+    border-radius: var(--radius-sm); padding: 8px 16px; color: var(--primary-dark);
+    font-size: 13px; font-weight: 500; text-align: center; white-space: nowrap;
+}
+.flow-arrow { color: var(--primary-light); font-size: 18px; margin: 0 5px; flex-shrink: 0; }
+
+/* ── 时间线 ── */
+.timeline { position: relative; padding: 10px 0 10px 34px; margin: 20px 0; }
+.timeline::before {
+    content: ''; position: absolute; left: 9px; top: 0; bottom: 0; width: 2px;
+    background: linear-gradient(180deg, var(--primary), var(--accent)); border-radius: 1px;
+}
+.timeline-item {
+    position: relative; margin-bottom: 14px; padding: 12px 16px;
+    background: var(--bg-white); border-radius: var(--radius-sm); border: 1px solid var(--border-light);
+}
+.timeline-item::before {
+    content: ''; position: absolute; left: -29px; top: 16px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--primary); border: 2px solid var(--bg-page); z-index: 1;
+}
+.timeline-item .step-title { color: var(--primary-dark); font-weight: 600; margin-bottom: 3px; font-size: 14px; }
+.timeline-item p { font-size: 13px; color: var(--text-muted); margin-bottom: 0; }
+
+/* ── 对比区块 ── */
+.compare-block { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0; }
+.compare-item { background: var(--bg-white); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 16px 18px; }
+.compare-item.pros { border-top: 3px solid var(--primary); }
+.compare-item.cons { border-top: 3px solid #f59e0b; }
+.compare-item h4 { margin-top: 0; padding-bottom: 5px; border-bottom: none; font-size: 14px; }
+
+/* ── 架构图（分层/分支结构） ── */
+.arch-diagram {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 20px; background: var(--bg-white);
+    border: 1px solid var(--border-light); border-radius: var(--radius-md); margin: 20px 0;
+}
+.arch-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.arch-node {
+    padding: 8px 18px; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 600; text-align: center; min-width: 90px; line-height: 1.4;
+}
+.arch-node.primary { background: var(--bg-green-50); border: 2px solid var(--primary); color: var(--primary-dark); }
+.arch-node.secondary { background: #fff7ed; border: 2px solid #f59e0b; color: #b45309; }
+.arch-node.accent { background: #eff6ff; border: 2px solid #3b82f6; color: #1e40af; }
+.arch-connector { color: var(--text-muted); font-size: 20px; font-weight: 700; flex-shrink: 0; }
+
+/* ── 多场景卡片 ── */
+.scenario-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0; }
+.scenario-card { padding: 16px 18px; border-radius: var(--radius-md); border-left: 4px solid; }
+.scenario-card h4 { margin-top: 0; font-size: 14px; padding-bottom: 4px; border-bottom: none; }
+.scenario-card ul { margin: 6px 0 0 0; padding-left: 16px; }
+.scenario-card li { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; line-height: 1.5; }
+.scenario-card.blue { border-color: #3b82f6; background: #eff6ff; }
+.scenario-card.blue h4 { color: #1e40af; }
+.scenario-card.green { border-color: var(--primary); background: var(--bg-green-50); }
+.scenario-card.green h4 { color: var(--primary-dark); }
+.scenario-card.purple { border-color: #8b5cf6; background: #f5f3ff; }
+.scenario-card.purple h4 { color: #6d28d9; }
+.scenario-card.orange { border-color: #f59e0b; background: #fffbeb; }
+.scenario-card.orange h4 { color: #b45309; }
+
+/* ━━━ 面试题卡片 ━━━ */
+.question-card {
+    background: var(--bg-white); border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg); margin-bottom: 24px; overflow: hidden;
+    transition: box-shadow 0.2s;
+}
+.question-card:hover { box-shadow: var(--shadow-card-hover); }
+.question-header {
+    background: var(--gradient-header-dark); padding: 14px 22px;
+    font-size: 15px; font-weight: 600; color: #fff;
+}
+.question-section { padding: 14px 22px; border-bottom: 1px solid var(--border-light); }
+.question-section:last-child { border-bottom: none; }
+.question-section h4 {
+    color: var(--primary-dark); font-size: 12px; font-weight: 700;
+    margin-bottom: 6px; margin-top: 0; padding-bottom: 0; border-bottom: none;
+    text-transform: uppercase; letter-spacing: 2px;
+}
+.question-section p { margin-bottom: 6px; font-size: 14px; }
+.question-section.answer-section { background: var(--bg-gray-50); }
+.question-section.followup-section { background: var(--bg-green-50); }
+.keyword-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.keyword-tags .tag {
+    background: var(--bg-green-50); border: 1px solid rgba(77,184,164,0.2);
+    color: var(--primary-dark); padding: 3px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 500;
+}
+
+/* ── 面试评分标准 ── */
+.scoring-rubric {
+    border: 1px solid var(--border-light); border-radius: var(--radius-md);
+    overflow: hidden; margin: 12px 22px 14px 22px;
+}
+.score-level {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 18px; border-bottom: 1px solid var(--border-light); font-size: 13px;
+}
+.score-level:last-child { border-bottom: none; }
+.score-level p { margin: 0; color: var(--text-secondary); line-height: 1.5; }
+.score-badge {
+    display: inline-block; padding: 2px 10px; border-radius: 10px;
+    font-size: 12px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
+}
+.score-excellent { background: #f0fdf4; }
+.score-excellent .score-badge { background: #dcfce7; color: #15803d; }
+.score-pass { background: #fefce8; }
+.score-pass .score-badge { background: #fef3c7; color: #b45309; }
+.score-fail { background: #fef2f2; }
+.score-fail .score-badge { background: #fee2e2; color: #dc2626; }
+
+/* ── 30秒速答（面试类） ── */
+.question-section.quick-answer {
+    background: linear-gradient(135deg, #ecfdf5, #f0fdf4);
+    border-bottom: 1px solid rgba(77,184,164,0.2);
+}
+.question-section.quick-answer h4 { color: #059669; font-size: 12px; }
+.question-section.quick-answer h4::before { content: '\26A1 '; }
+.question-section.quick-answer p { color: #065f46; font-weight: 500; font-size: 15px; line-height: 1.7; }
+
+/* ── 动手试一试 ── */
+.practice-box {
+    background: linear-gradient(135deg, var(--bg-teal-50) 0%, var(--bg-green-50) 100%);
+    border: 1px solid rgba(77,184,164,0.25);
+    border-left: 4px solid var(--primary);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    padding: 20px 22px; margin: 24px 0;
+}
+.practice-box::before {
+    content: '\1F527  动手试一试'; display: block; font-weight: 700;
+    color: var(--primary-dark); font-size: 15px; margin-bottom: 10px;
+    padding-bottom: 8px; border-bottom: 1px dashed rgba(77,184,164,0.25);
+}
+.practice-box h4 { display: none; }
+.practice-box ol, .practice-box ul { margin: 8px 0 0 0; padding-left: 20px; }
+.practice-box li { color: var(--text-secondary); margin-bottom: 6px; line-height: 1.7; }
+.practice-box p { color: var(--text-secondary); margin-bottom: 8px; }
+.practice-box code {
+    background: rgba(77,184,164,0.1); padding: 1px 6px; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--primary-dark);
+}
+
+/* ── 检验你的理解 ── */
+.self-check {
+    background: #fefce8; border: 1px solid rgba(245,158,11,0.2);
+    border-left: 4px solid #f59e0b;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    padding: 20px 22px; margin: 24px 0;
+}
+.self-check::before {
+    content: '\2753  检验你的理解'; display: block; font-weight: 700;
+    color: #b45309; font-size: 15px; margin-bottom: 10px;
+    padding-bottom: 8px; border-bottom: 1px dashed rgba(245,158,11,0.3);
+}
+.self-check h4 { display: none; }
+.self-check ol { margin: 8px 0 0 0; padding-left: 20px; counter-reset: check-counter; list-style: none; }
+.self-check ol li { counter-increment: check-counter; position: relative; padding-left: 8px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.7; }
+.self-check ol li::before { content: 'Q' counter(check-counter); position: absolute; left: -20px; color: #d97706; font-weight: 700; font-size: 13px; }
+.self-check p { color: var(--text-secondary); margin-bottom: 6px; }
+.self-check .check-answer { color: var(--text-muted); font-size: 13px; font-style: italic; margin-top: 4px; }
+
+/* ── 编者提示 ── */
+.editor-note {
+    background: linear-gradient(135deg, #eff6ff, #f0f7ff);
+    border: 1px solid rgba(59,130,246,0.15);
+    border-left: 3px solid #3b82f6;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 12px 16px; margin: 18px 0; font-size: 14px; color: #1e40af; line-height: 1.7;
+}
+.editor-note::before {
+    content: '\1f4d6  编者提示'; display: inline-block; font-weight: 700;
+    font-size: 11px; letter-spacing: 1.5px; margin-right: 8px;
+    padding: 1px 7px; background: rgba(59,130,246,0.1); border-radius: 3px; color: #2563eb;
+}
+
+/* ── 难度标签 ── */
+.difficulty-tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; }
+.diff-beginner { background: #dcfce7; color: #15803d; }
+.diff-intermediate { background: #fef3c7; color: #b45309; }
+.diff-advanced { background: #fee2e2; color: #dc2626; }
+
+/* ━━━ 章节导航栏 ━━━ */
+.chapter-nav {
+    display: flex; justify-content: center; align-items: center; gap: 12px;
+    margin-top: 40px; padding: 0 20px;
+}
+.chapter-nav a {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 24px; border-radius: var(--radius-md);
+    font-size: 14px; font-weight: 600; text-decoration: none;
+    transition: all 0.2s ease; cursor: pointer;
+}
+.chapter-nav .nav-prev,
+.chapter-nav .nav-next {
+    background: var(--bg-white); color: var(--primary);
+    border: 1px solid rgba(77,184,164,0.25);
+}
+.chapter-nav .nav-prev:hover,
+.chapter-nav .nav-next:hover {
+    background: var(--bg-green-50); border-color: var(--primary);
+    box-shadow: 0 2px 8px rgba(77,184,164,0.12);
+}
+.chapter-nav .nav-catalog {
+    background: var(--gradient-main); color: #fff; border: none;
+}
+.chapter-nav .nav-catalog:hover {
+    opacity: 0.9; box-shadow: 0 2px 8px rgba(77,184,164,0.25);
+}
+.chapter-nav .nav-placeholder {
+    width: 120px;
+}
+
+/* ━━━ 页脚 ━━━ */
+.page-footer {
+    text-align: center; padding: 28px 0 16px 0; color: var(--text-muted);
+    font-size: 12px; letter-spacing: 1px;
+    border-top: 1px solid var(--border-light); margin-top: 24px;
+}
+
+/* ━━━ 移动端适配 ━━━ */
+@media (max-width: 768px) {
+    body { font-size: 14px; line-height: 1.75; }
+
+    /* 目录页 */
+    .catalog-container { padding: 0 12px 20px; }
+    .catalog-hero { padding: 22px 16px 18px; }
+    .catalog-hero h1 { font-size: 20px; }
+    .catalog-hero .subtitle { font-size: 15px; }
+    .stats-bar { gap: 10px; padding: 10px 8px; flex-wrap: wrap; }
+    .stats-number { font-size: 17px; }
+    .stats-label { font-size: 11px; }
+    .catalog-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .card-title { font-size: 13px; min-height: auto; }
+    .card-points li { font-size: 11px; }
+
+    /* 章节页 */
+    .chapter-container { padding: 20px 14px; }
+    .chapter-header { padding: 18px 16px; margin-bottom: 20px; }
+    .chapter-header h2 { font-size: 18px; }
+
+    /* 导读卡片 */
+    .guide-meta { flex-direction: column; }
+    .guide-meta-item { border-right: none; border-bottom: 1px solid var(--border-light); padding: 8px 14px; font-size: 12px; }
+    .guide-meta-item:last-child { border-bottom: none; }
+    .guide-body { padding: 14px 14px 16px; }
+    .guide-learn ul { flex-direction: column; gap: 2px; }
+    .guide-concept-tag { font-size: 12px; padding: 2px 10px; }
+
+    /* 正文 */
+    .chapter-content h3 { font-size: 15px; padding: 8px 12px; margin: 24px 0 10px 0; }
+    .chapter-content h4 { font-size: 14px; }
+    .chapter-content p { font-size: 14px; line-height: 1.8; }
+
+    /* 表格横向滚动 */
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+    thead th { padding: 8px 10px; font-size: 12px; white-space: nowrap; }
+    tbody td { padding: 8px 10px; font-size: 13px; white-space: nowrap; }
+
+    /* 代码块 */
+    pre code { padding: 12px 10px; font-size: 12px; }
+
+    /* 流程图：允许换行 */
+    .flowchart { padding: 14px 10px; gap: 4px; }
+    .flow-step { font-size: 12px; padding: 6px 10px; }
+    .flow-arrow { font-size: 16px; margin: 0 2px; }
+
+    /* 架构图 */
+    .arch-diagram { padding: 14px 10px; }
+    .arch-row { gap: 4px; }
+    .arch-node { padding: 6px 10px; font-size: 12px; min-width: 70px; }
+    .arch-connector { font-size: 16px; }
+
+    /* 双列布局改单列 */
+    .scenario-grid { grid-template-columns: 1fr; gap: 10px; }
+    .compare-block { grid-template-columns: 1fr; gap: 10px; }
+
+    /* 提示框/概念块 */
+    .concept-block, .key-point { padding: 14px 14px; }
+    .tip-box { padding: 12px 14px; }
+    .editor-note { padding: 10px 12px; font-size: 13px; }
+
+    /* 动手试一试 / 自测题 / 小结 */
+    .practice-box { padding: 14px 14px; }
+    .self-check { padding: 14px 14px; }
+    .summary-box { padding: 16px 16px; }
+
+    /* 面试题卡片 */
+    .question-header { padding: 10px 14px; font-size: 14px; }
+    .question-section { padding: 10px 14px; }
+    .scoring-rubric { margin: 10px 14px 12px; }
+    .score-level { padding: 8px 12px; gap: 8px; flex-direction: column; }
+
+    /* 导航栏 */
+    .chapter-nav { flex-direction: column; gap: 8px; padding: 0 10px; }
+    .chapter-nav a { padding: 8px 16px; font-size: 13px; justify-content: center; width: 100%; }
+    .chapter-nav .nav-placeholder { display: none; }
+}
+
+
+/* ━━━ 广告：章节页眉品牌文字（零占位，不影响间距） ━━━ */
+.header-brand {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--primary);
+    letter-spacing: 2px;
+    opacity: 0.85;
+    line-height: 1;
+    padding: 0;
+    margin: 0;
+    height: 0;
+    overflow: visible;
+    position: relative;
+    top: -22px;
+    z-index: 1;
+}
+
+/* ━━━ 广告：页脚品牌行 ━━━ */
+.footer-brand {
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+/* ━━━ 广告：完整横幅 ━━━ */
+.ad-banner {
+    margin: 36px 0 0 0;
+    padding: 24px 28px;
+    background: var(--bg-gray-50);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+.ad-banner::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--gradient-soft);
+}
+.ad-banner .ad-brand {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--primary-dark);
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+}
+.ad-banner .ad-divider {
+    width: 60%;
+    margin: 8px auto;
+    border: none;
+    border-top: 1px dashed var(--border-default);
+}
+.ad-banner .ad-tagline {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    line-height: 1.6;
+}
+.ad-banner .ad-cta-btn {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 10px 32px;
+    background: var(--gradient-main);
+    color: #fff;
+    border-radius: 50px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.ad-banner .ad-cta-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+.ad-banner .ad-offers {
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.8;
+}
+.ad-banner .ad-links {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.ad-banner .ad-links a {
+    color: var(--primary);
+    text-decoration: none;
+}
+.ad-banner .ad-links a:hover {
+    text-decoration: underline;
+}
+.ad-banner .ad-offer-highlight {
+    font-weight: 700;
+    color: var(--primary-dark);
+    font-size: 14px;
+}
+
+/* ━━━ 目录页品牌文字（hero与stats-bar之间的白色间隙，零占位） ━━━ */
+.catalog-brand {
+    text-align: center;
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    opacity: 0.85;
+    line-height: 1;
+    padding: 0;
+    margin: 0;
+    height: 0;
+    overflow: visible;
+    position: relative;
+    top: -16px;
+    z-index: 1;
+}
+
+@media (max-width: 768px) {
+    .header-brand { font-size: 10px; top: -15px; }
+    .ad-banner { padding: 16px 14px; }
+    .ad-banner .ad-brand { font-size: 14px; }
+    .ad-banner .ad-tagline { font-size: 13px; }
+    .ad-banner .ad-cta-btn { padding: 8px 24px; font-size: 13px; }
+    .catalog-brand { font-size: 10px; top: -11px; }
+}
+
+</style>
+</head>
+<body>
+    <div class="chapter-container">
+        <div class="chapter-content">
+<div class="chapter-header"><h2>第25章 系统集成与测试</h2></div>
+        <div class="header-brand">码枢沄社 · 嵌入式体系化教程平台</div>
+
+<div class="chapter-guide">
+  <div class="guide-meta">
+    <span class="guide-meta-item"><span class="difficulty-tag diff-advanced">高级</span></span>
+    <span class="guide-meta-item"><span class="meta-icon">👤</span> 已完成Bootloader与App独立开发的工程师</span>
+    <span class="guide-meta-item"><span class="meta-icon">🔧</span> 将各模块组合成可靠产品并验证其稳定性的阶段</span>
+  </div>
+  <div class="guide-body">
+    <div class="guide-learn"><div class="guide-learn-label">本章你将学到</div><ul><li>如何将Bootloader、App、通信协议栈等模块集成为一个可工作的系统</li><li>设计覆盖升级全流程的测试用例与测试环境</li><li>使用自动化脚本进行批量回归测试与可靠性验证</li></ul></div>
+    <div class="guide-concepts"><span class="guide-concepts-label">核心概念</span><span class="guide-concept-tag">系统集成</span><span class="guide-concept-tag">测试金字塔</span></div>
+  </div>
+</div>
+
+<p>当Bootloader、应用程序、通信协议栈都开发完成后，将它们组合起来并确保整个升级系统稳定可靠，就是系统集成与测试阶段的核心任务。我在项目中见过不少案例，每个模块单独测试都正常，但集成后却出现各种时序冲突、内存踩踏或状态机死锁的问题。这一章，我们就来解决这些问题。</p>
+
+<div class="concept-block">
+<p><strong>生活类比：</strong> 组装一台电脑。你买来了主板、CPU、内存、硬盘、电源，每个部件单独看都是好的。系统集成就是把这些部件正确地插到主板上，连接好所有线缆，然后通电测试整机是否能稳定运行，会不会蓝屏或死机。</p>
+<p><strong>技术定义：</strong> 系统集成是将独立开发并验证的软件模块（Bootloader、App、中间件）和硬件平台，按照设计规范组合成一个完整系统，并通过系统级测试验证其整体功能、性能和可靠性的过程。</p>
+</div>
+
+<h3>系统集成架构与数据流</h3>
+
+<p>一个完整的IAP升级系统，其软件架构通常分为三层：上位机工具、Bootloader固件、应用程序。它们通过物理通信链路（如UART、CAN）连接，数据在其中有序流动。</p>
+
+<div class="arch-diagram">
+  <div class="arch-row">
+    <div class="arch-node primary">上位机升级工具</div>
+    <span class="arch-connector">↓</span>
+    <div class="arch-node secondary">通信协议栈<br/>(YModem/Custom)</div>
+    <span class="arch-connector">↓</span>
+    <div class="arch-node accent">物理链路<br/>(UART/USB/CAN)</div>
+  </div>
+  <div class="arch-row"><span class="arch-connector">↓</span></div>
+  <div class="arch-row">
+    <div class="arch-node accent">物理链路<br/>(UART/USB/CAN)</div>
+    <span class="arch-connector">↓</span>
+    <div class="arch-node secondary">Bootloader固件<br/>(协议解析/Flash驱动)</div>
+    <span class="arch-connector">↓</span>
+    <div class="arch-node primary">应用程序<br/>(用户功能)</div>
+  </div>
+</div>
+
+<p>集成工作的第一步，是确保这三层之间的接口完全匹配。你需要重点关注以下几个接口的一致性：</p>
+
+<table>
+<thead>
+<tr><th>接口点</th><th>检查内容</th><th>常见不匹配问题</th></tr>
+</thead>
+<tbody>
+<tr><td>通信物理层</td><td>波特率、数据位、停止位、校验位；CAN的波特率与ID过滤；USB的PID/VID</td><td>上位机与Bootloader波特率设置不一致，导致乱码。</td></tr>
+<tr><td>应用层协议</td><td>帧头帧尾、数据包长度定义、ACK/NACK响应格式、超时时间</td><td>Bootloader期望的ACK字节是0x79，而上位机发送了“OK”字符串。</td></tr>
+<tr><td>内存映射</td><td>App的起始地址、中断向量表偏移量(VTOR)、堆栈指针初始值</td><td>App编译时链接脚本的起始地址与Bootloader跳转地址不符。</td></tr>
+<tr><td>共享资源</td><td>看门狗配置、时钟配置、外设初始化状态、全局变量存储区</td><td>Bootloader初始化了某个外设，App运行时未重新初始化导致异常。</td></tr>
+</tbody>
+</table>
+
+<p>实际开发中，我建议创建一个<code>system_config.h</code>头文件，集中定义所有这些跨模块的配置参数。Bootloader和App工程都包含这个头文件，从源头上保证一致性。</p>
+
+<div class="key-point">
+<h4>关键点：中断向量表重映射</h4>
+<p>这是集成时最容易出错的地方。Bootloader运行在Flash起始地址（如0x08000000），它的中断向量表也位于此。当跳转到App后，App的中断向量表必须被重映射到自己的起始地址（如0x08008000）。这通常在App的<code>main()</code>函数最开始，通过设置<code>SCB->VTOR</code>寄存器完成。如果忘记这一步，任何中断都会导致程序跑飞。</p>
+</div>
+
+<h3>构建测试金字塔</h3>
+
+<p>测试不能等到所有模块集成完毕才开始。高效的测试策略遵循“测试金字塔”模型，从底层到顶层，测试范围逐级扩大，但测试用例数量逐级减少。</p>
+
+<div class="arch-diagram">
+  <div class="arch-row">
+    <div class="arch-node primary" style="width: 120px;">系统测试<br/>(少量，场景复杂)</div>
+  </div>
+  <div class="arch-row"><span class="arch-connector">↑</span></div>
+  <div class="arch-row">
+    <div class="arch-node secondary" style="width: 140px;">集成测试<br/>(中等，关注接口)</div>
+  </div>
+  <div class="arch-row"><span class="arch-connector">↑</span></div>
+  <div class="arch-row">
+    <div class="arch-node accent" style="width: 160px;">单元测试<br/>(大量，聚焦函数)</div>
+  </div>
+</div>
+
+<p>对于STM32 Bootloader开发，各层的测试重点如下：</p>
+
+<div class="scenario-grid">
+  <div class="scenario-card blue"><h4>单元测试</h4><ul><li><strong>对象：</strong>独立函数或模块（如CRC校验函数、Flash写入函数、协议解析器）。</li><li><strong>方法：</strong>在PC上使用测试框架（如Unity、CppUTest）模拟运行，验证输入输出。</li><li><strong>目标：</strong>确保每个基础单元逻辑正确。</li></ul></div>
+  <div class="scenario-card green"><h4>集成测试</h4><ul><li><strong>对象：</strong>Bootloader整体或Bootloader与简单桩程序。</li><li><strong>方法：</strong>将Bootloader烧录进开发板，通过串口工具手动发送协议帧，验证其响应。</li><li><strong>目标：</strong>确保模块间接口通信正常，数据流正确。</li></ul></div>
+  <div class="scenario-card orange"><h4>系统测试</h4><ul><li><strong>对象：</strong>完整系统（上位机 + Bootloader + App）。</li><li><strong>方法：</strong>模拟真实用户场景，执行完整的升级流程。</li><li><strong>目标：</strong>验证端到端的业务流程和用户体验。</li></ul></div>
+</div>
+
+<h3>设计端到端升级测试用例</h3>
+
+<p>系统测试是验证产品可靠性的最后一道关卡。你需要设计一组覆盖升级全流程、各种边界条件和异常场景的测试用例。</p>
+
+<div class="flowchart">
+  <div class="flow-step">测试准备<br/>(烧录旧App)</div><span class="flow-arrow">→</span>
+  <div class="flow-step">触发进入<br/>Bootloader</div><span class="flow-arrow">→</span>
+  <div class="flow-step">传输新固件</div><span class="flow-arrow">→</span>
+  <div class="flow-step">验证与跳转</div><span class="flow-arrow">→</span>
+  <div class="flow-step">运行新App</div>
+</div>
+
+<p>基于这个流程，一个基本的测试用例集合应该包括：</p>
+<ul>
+<li><strong>正常升级流程：</strong> 从旧版本App，通过指令进入Bootloader，成功传输并验证一个正确的新固件，跳转后新App功能正常。</li>
+<li><strong>固件校验失败：</strong> 传输一个被篡改或损坏的固件文件（如修改其中几个字节），Bootloader应能通过CRC或哈希校验发现错误，并报告失败，系统应回退到原有App正常运行。</li>
+<li><strong>通信中断测试：</strong> 在固件传输过程中，随机模拟串口线被拔掉、电源波动等中断情况。系统应能安全超时，并保持在可恢复的状态（通常应能重启并回到原App）。</li>
+<li><strong>断电恢复测试：</strong> 在Flash编程的关键阶段（如擦除扇区或写入半页时）突然断电，重新上电后Bootloader应能检测到不完整的升级状态，并执行清理或回滚操作，避免系统“变砖”。</li>
+<li><strong>边界值测试：</strong> 传输一个恰好等于App分区最大容量的固件；传输一个空文件或极小的固件。</li>
+</ul>
+
+<div class="tip-box warning">
+<h4>⚠️ 常见误区</h4>
+<ul>
+<li><strong>只测“happy path”：</strong> 只测试一切顺利的流程，忽略网络抖动、数据包丢失、异常断电等真实场景，导致产品在现场故障率高。</li>
+<li><strong>忽视环境差异：</strong> 在实验室的纯净环境下测试通过，但未在高温、低温、电源噪声大的环境下测试，硬件时序可能出问题。</li>
+<li><strong>测试数据单一：</strong> 始终用同一个“完美”的固件文件测试，未能发现协议解析或内存处理中对特定数据模式（如全0、全0xFF）的潜在bug。</li>
+</ul>
+</div>
+
+<h3>自动化测试与持续集成</h3>
+
+<p>手动重复执行上述测试用例是枯燥且容易出错的。对于需要反复验证的发布版本，建立自动化测试流水线至关重要。</p>
+
+<p>一个典型的Bootloader自动化测试环境包含以下组件：</p>
+<ol>
+<li><strong>测试主机（PC）：</strong> 运行测试脚本（Python），控制整个流程。</li>
+<li><strong>USB转串口工具：</strong> 用于与待测板（DUT）的Bootloader通信。</li>
+<li><strong>可编程电源：</strong> 通过SCPI指令控制，模拟上电、下电、电压跌落。</li>
+<li><strong>继电器或开关板：</strong> 用于控制Bootloader进入引脚（如BOOT0）的电平，模拟升级触发信号。</li>
+</ol>
+
+<div class="editor-note">
+<p><strong>编者提示：</strong> 在实际搭建自动化测试台时，一个隐藏的坑是串口缓冲区和超时设置。Python的<code>pyserial</code>库读取数据时，如果超时设置太短，可能在复杂测试中因系统调度延迟而意外超时，导致测试误判。我的经验是将超时设置为理论值的3-5倍，并在脚本中加入重试逻辑。同时，每次发送命令前清空串口输入缓冲区，避免残留数据干扰。</p>
+</div>
+
+<p>下面是一个使用Python<code>pyserial</code>库实现的简单自动化测试脚本片段，用于验证Bootloader的握手命令：</p>
+
+<pre><code><span class="kw">import</span> serial
+<span class="kw">import</span> time
+
+<span class="kw">def</span> <span class="func">test_bootloader_handshake</span>():
+    <span class="cmt"># 1. 配置串口，参数需与Bootloader一致</span>
+    ser = serial.Serial(<span class="str">'COM3'</span>, baudrate=<span class="num">115200</span>, timeout=<span class="num">2.0</span>)
+    
+    <span class="cmt"># 2. 发送进入Bootloader的触发信号（例如，通过控制BOOT0引脚）</span>
+    <span class="cmt"># 这里假设通过串口发送特定字符‘#’触发</span>
+    ser.write(<span class="str">b'#'</span>)
+    time.sleep(<span class="num">0.1</span>)  <span class="cmt"># 等待MCU复位进入Bootloader</span>
+    ser.reset_input_buffer() <span class="cmt"># 清空可能存在的欢迎信息等</span>
+    
+    <span class="cmt"># 3. 发送握手命令帧（假设为0x7F）</span>
+    handshake_cmd = <span class="str">b'\x7F'</span>
+    ser.write(handshake_cmd)
+    
+    <span class="cmt"># 4. 读取并验证响应（假设正确响应为0x79）</span>
+    response = ser.read(<span class="num">1</span>)
+    <span class="kw">if</span> response == <span class="str">b'\x79'</span>:
+        print(<span class="str">"握手测试: PASS"</span>)
+        <span class="kw">return</span> <span class="kw">True</span>
+    <span class="kw">else</span>:
+        print(<span class="str">f"握手测试: FAIL. 收到响应: {response.hex()}"</span>)
+        <span class="kw">return</span> <span class="kw">False</span>
+    ser.close()</code></pre>
+
+<p>将这个脚本扩展，集成电源控制、固件文件读取、多轮次压力测试，就构成了自动化回归测试的核心。你可以使用Jenkins、GitLab CI等工具，在每次代码提交后自动触发测试，确保主分支的代码始终处于可工作状态。</p>
+
+<h3>性能与可靠性专项测试</h3>
+
+<p>除了功能正确性，对于工业产品，性能和可靠性是关键指标。你需要进行以下专项测试：</p>
+
+<table>
+<thead>
+<tr><th>测试类型</th><th>测试方法</th><th>通过标准</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>升级耗时</strong></td><td>使用逻辑分析仪或软件打点，记录从升级指令发出到新App开始运行的总时间。</td><td>满足产品需求规格（如90秒内完成1MB固件升级）。</td></tr>
+<tr><td><strong>内存泄漏/碎片</strong></td><td>在Bootloader中反复执行升级流程（模拟多次升级失败重试），监控堆内存使用量。</td><td>内存使用量不会持续增长，或稳定在安全阈值内。</td></tr>
+<tr><td><strong>长期稳定性</strong></td><td>让设备在Bootloader模式下连续运行24-72小时，或进行上千次的升级流程循环测试。</td><td>不出现死机、内存溢出、看门狗复位等异常。</td></tr>
+<tr><td><strong>兼容性测试</strong></td><td>使用不同版本、不同厂商的上位机工具，或在不同操作系统（Windows/Linux）上进行升级操作。</td><td>所有组合下升级功能均正常。</td></tr>
+</tbody>
+</table>
+
+<div class="practice-box">
+<h4>动手试一试</h4>
+使用串口调试助手（如Tera Term、SecureCRT）手动发送进入Bootloader的命令，然后尝试发送一个“握手”命令，观察Bootloader的回复是否符合你的协议设计。</p>
+<p>2.  <strong>编写一个Python脚本：</strong> 使用<code>pyserial</code>库，自动化完成“握手-获取版本号”这个简单的测试流程。脚本应能判断响应是否正确，并打印出测试结果。</p>
+<p>3.  <strong>设计一个异常测试：</strong> 在传输固件文件时，手动拔掉串口线，然后重新连接并给设备上电。观察设备是否还能正常启动到原来的应用程序？记录下设备的行为。</p>
+</div>
+
+<div class="self-check">
+<h4>检验你的理解</h4>
+<p>1.  判断题：系统集成测试只需要在全部模块开发完成后进行一次即可。（ ）</p>
+<p>2.  选择题：在App中，中断向量表重映射通常通过设置哪个寄存器完成？
+A. SCB->VTOR
+B. RCC->CR
+C. FLASH->ACR
+D. NVIC->ISER</p>
+<p>3.  判断题：“测试金字塔”模型中，单元测试的用例数量应该比系统测试的用例数量少。（ ）</p>
+</div>
+
+<div class="summary-box">
+<h3>本章小结</h3>
+<ul>
+<li>系统集成是将Bootloader、App、通信模块组合成完整可升级系统的关键步骤，需要严格检查通信参数、协议、内存映射等接口的一致性。</li>
+<li>采用“测试金字塔”策略，从单元测试、集成测试到系统测试分层进行，系统测试应覆盖正常流程、异常中断、边界条件和断电恢复等真实场景。</li>
+<li>自动化测试是保证产品质量和开发效率的重要手段，可以通过Python脚本控制串口、电源等硬件，构建回归测试流水线。</li>
+<li>工业级产品还需进行升级耗时、长期稳定性、兼容性等专项性能与可靠性测试。</li>
+<li>集成与测试阶段发现的问题，往往能暴露出架构设计或模块交互中的深层次缺陷，是提升产品可靠性的宝贵机会。</li>
+</ul>
+</div>
+
+</div>
+        
+        <div class="chapter-nav">
+            <a href="24.html" class="nav-prev">&larr; 上一章</a>
+            <a href="00.html" class="nav-catalog">返回目录</a>
+            <a href="26.html" class="nav-next">下一章 &rarr;</a>
+        </div>
+        <div class="page-footer">
+            <div class="footer-brand">码枢沄社 · 嵌入式体系化教程平台</div>
+            — STM32Cube Bootloader开发与IAP固件升级从入门到精通 · 第25章 —
+        </div>
+    </div>
+</body>
+</html>

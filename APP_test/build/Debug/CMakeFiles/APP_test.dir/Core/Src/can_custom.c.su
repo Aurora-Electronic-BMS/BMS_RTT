@@ -1,0 +1,11 @@
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:56:19:can_init	24	static
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:91:19:can_send_status	96	static
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:154:19:can_send_charge_req	24	static
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:164:6:ftcan_msg_received_cb	40	static,ignoring_inline_asm
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:192:5:can_custom_msg_pop	24	static,ignoring_inline_asm
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:202:10:can_custom_drop_count	4	static
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:210:6:can_custom_dispatch	16	static
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:242:6:can_custom_selftest	16	static
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:250:6:can_custom_selftest_tick	40	static
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:300:6:charge_cmd_check	8	static
+D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/can_custom.c:315:5:charge_inject	16	static

@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STM32Cube Bootloader开发与IAP固件升级从入门到精通 - 第9章 Flash编程接口详解</title>
+    <style>
+@import url('https://fonts.loli.net/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+    --primary: #4db8a4;
+    --primary-dark: #3a9e8c;
+    --primary-light: #6fcfbe;
+    --accent: #45a899;
+    --accent-light: #a8e6db;
+    --gradient-main: linear-gradient(135deg, #4db8a4, #5ec6b4);
+    --gradient-soft: linear-gradient(135deg, #4db8a4 0%, #5ec6b4 50%, #7dd4c6 100%);
+    --gradient-header: linear-gradient(135deg, #4db8a4, #62c9b8, #7dd4c6);
+    --gradient-header-dark: linear-gradient(135deg, #2a7d6e, #358f7f, #4db8a4);
+    --bg-page: #f6f8fa;
+    --bg-white: #ffffff;
+    --bg-gray-50: #f8f9fb;
+    --bg-gray-100: #f0f2f5;
+    --bg-green-50: #edf9f5;
+    --bg-teal-50: #f0faf7;
+    --text-primary: #1f2937;
+    --text-secondary: #4b5563;
+    --text-muted: #9ca3af;
+    --border-light: #e5e7eb;
+    --border-default: #d1d5db;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+    --shadow-card-hover: 0 4px 12px rgba(77,184,164,0.12), 0 2px 4px rgba(0,0,0,0.04);
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: var(--bg-page);
+    color: var(--text-primary);
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", 'Segoe UI', sans-serif;
+    line-height: 1.8;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ━━━ 目录页 ━━━ */
+.catalog-container { max-width: 900px; margin: 0 auto; padding: 0 24px 30px; }
+
+.catalog-hero {
+    text-align: center; padding: 30px 30px 22px;
+    background: var(--gradient-header);
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+    margin-bottom: 20px; position: relative; overflow: hidden;
+}
+.catalog-hero::before {
+    content: ''; position: absolute; top: -50%; right: -15%;
+    width: 260px; height: 260px;
+    background: radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.catalog-hero::after {
+    content: ''; position: absolute; bottom: -40%; left: -8%;
+    width: 180px; height: 180px;
+    background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.catalog-hero h1 { font-size: 26px; font-weight: 700; color: #fff; letter-spacing: 1px; margin-bottom: 8px; position: relative; z-index: 1; }
+.catalog-hero .subtitle { color: rgba(255,255,255,0.85); font-size: 18px; font-weight: 500; letter-spacing: 2px; position: relative; z-index: 1; }
+
+/* 统计数据条 */
+.stats-bar {
+    display: flex; justify-content: center; gap: 24px;
+    padding: 14px 20px; background: var(--bg-white);
+    border: 1px solid var(--border-light); border-radius: var(--radius-lg);
+    margin-bottom: 16px; box-shadow: var(--shadow-card);
+}
+.stats-item { text-align: center; }
+.stats-number { font-size: 22px; font-weight: 700; color: var(--primary); line-height: 1.2; }
+.stats-label { font-size: 12px; color: var(--text-muted); letter-spacing: 0.5px; }
+
+/* 4列网格 */
+.catalog-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+.catalog-card-link { text-decoration: none; color: inherit; display: block; }
+.catalog-card-link:visited { color: inherit; }
+
+.catalog-card {
+    background: var(--bg-white); border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg); padding: 14px 14px 10px;
+    transition: all 0.2s ease; box-shadow: var(--shadow-card);
+    display: flex; flex-direction: column; height: 100%;
+}
+.catalog-card:hover {
+    border-color: rgba(77,184,164,0.35);
+    box-shadow: var(--shadow-card-hover); transform: translateY(-2px);
+}
+
+.card-number {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 7px;
+    background: #fef0ef; color: #e8564a;
+    font-size: 12px; font-weight: 700; margin-bottom: 6px; flex-shrink: 0;
+}
+.card-title { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; line-height: 1.35; min-height: 38px; }
+.card-points { list-style: none; padding: 0; margin: 0 0 6px 0; flex-grow: 1; }
+.card-points li { font-size: 12px; color: var(--text-secondary); line-height: 1.4; padding: 1px 0 1px 14px; position: relative; }
+.card-points li::before { content: '▸'; position: absolute; left: 0; color: var(--primary); font-size: 12px; font-weight: 700; }
+.card-action {
+    display: inline-block; font-size: 12px; font-weight: 600; color: #fff;
+    background: var(--primary); padding: 4px 14px; border-radius: 4px;
+    margin-top: 6px; transition: background 0.2s; text-align: center;
+}
+.catalog-card:hover .card-action { background: var(--primary-dark); }
+
+/* ━━━ 章节内容页 ━━━ */
+.chapter-container { max-width: 880px; margin: 0 auto; padding: 48px 40px; background: var(--bg-white); }
+
+.chapter-header {
+    background: var(--gradient-header); border-radius: var(--radius-lg);
+    padding: 28px 32px; margin-bottom: 32px; position: relative; overflow: hidden;
+}
+.chapter-header::before {
+    content: ''; position: absolute; top: -60%; right: -15%;
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.chapter-header h2 { color: #fff; font-size: 22px; font-weight: 700; letter-spacing: 0.5px; position: relative; z-index: 1; }
+
+/* ── 导读卡片 ── */
+.chapter-guide {
+    background: var(--bg-white); border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg); overflow: hidden;
+    margin-bottom: 28px; box-shadow: var(--shadow-card);
+}
+.guide-meta {
+    display: flex; align-items: center; flex-wrap: wrap;
+    background: var(--bg-gray-50); border-bottom: 1px solid var(--border-light); padding: 0;
+}
+.guide-meta-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 11px 18px; font-size: 13px; color: var(--text-secondary);
+    border-right: 1px solid var(--border-light); white-space: nowrap; line-height: 1;
+}
+.guide-meta-item:last-child { border-right: none; }
+.guide-meta-item .meta-icon { font-size: 14px; flex-shrink: 0; }
+.guide-body { padding: 18px 24px 20px; }
+.guide-learn { margin-bottom: 14px; }
+.guide-learn-label {
+    font-size: 13px; font-weight: 700; color: var(--primary);
+    letter-spacing: 1.5px; margin-bottom: 8px; display: block;
+}
+.guide-learn-label::before {
+    content: ''; display: inline-block; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--primary); margin-right: 8px; vertical-align: middle;
+}
+.guide-learn ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 24px; }
+.guide-learn li { font-size: 14px; color: var(--text-secondary); line-height: 1.7; padding-left: 16px; position: relative; }
+.guide-learn li::before { content: '▸'; position: absolute; left: 0; color: var(--accent-light); font-weight: 700; font-size: 14px; }
+.guide-concepts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.guide-concepts-label {
+    font-size: 13px; font-weight: 700; color: var(--primary);
+    letter-spacing: 1.5px; margin-right: 4px;
+}
+.guide-concepts-label::before {
+    content: ''; display: inline-block; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--primary); margin-right: 8px; vertical-align: middle;
+}
+.guide-concept-tag {
+    display: inline-block; background: var(--bg-green-50);
+    border: 1px solid rgba(77,184,164,0.2);
+    color: var(--primary-dark); padding: 3px 12px; border-radius: 14px;
+    font-size: 13px; font-weight: 500;
+}
+
+.chapter-content { padding: 0; }
+.chapter-content h3 {
+    color: var(--text-primary); font-size: 17px; font-weight: 700;
+    margin: 32px 0 14px 0; padding: 10px 16px;
+    background: var(--bg-green-50); border-left: 3px solid var(--primary);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.chapter-content h4 {
+    color: var(--text-primary); font-size: 15px; font-weight: 600;
+    margin: 22px 0 10px 0; padding-bottom: 6px; border-bottom: 1px solid var(--border-light);
+}
+.chapter-content p { color: var(--text-secondary); line-height: 1.85; margin-bottom: 14px; text-align: justify; }
+.chapter-content ul, .chapter-content ol { margin: 12px 0 16px 0; padding-left: 22px; color: var(--text-secondary); }
+.chapter-content li { margin-bottom: 6px; line-height: 1.7; padding-left: 4px; }
+.chapter-content li::marker { color: var(--primary); font-weight: 600; }
+
+/* ── 核心概念 / 重点知识 ── */
+.concept-block {
+    background: var(--bg-green-50); border: 1px solid rgba(77,184,164,0.15);
+    border-radius: var(--radius-md); padding: 18px 22px; margin: 18px 0;
+}
+.concept-block h4 { color: var(--primary-dark); border-bottom: none; margin-top: 0; padding-bottom: 4px; }
+.key-point {
+    background: var(--bg-teal-50); border: 1px solid rgba(69,168,153,0.15);
+    border-radius: var(--radius-md); padding: 18px 22px; margin: 18px 0;
+}
+.key-point h4 { color: var(--accent); border-bottom: none; margin-top: 0; }
+
+/* ── 提示框 ── */
+.tip-box {
+    background: var(--bg-gray-50); border: 1px solid var(--border-light);
+    border-left: 3px solid var(--primary);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 14px 18px; margin: 18px 0;
+}
+.tip-box::before {
+    content: 'TIP'; display: inline-block; font-weight: 700; color: var(--primary);
+    font-size: 11px; letter-spacing: 2px; margin-bottom: 5px;
+    padding: 1px 7px; background: var(--bg-green-50); border-radius: 3px;
+}
+.tip-box.warning { border-left-color: #f59e0b; background: #fffbeb; }
+.tip-box.warning::before { content: 'CAUTION'; color: #d97706; background: #fef3c7; }
+.tip-box.important { border-left-color: #ef4444; background: #fef2f2; }
+.tip-box.important::before { content: 'IMPORTANT'; color: #dc2626; background: #fee2e2; }
+
+/* ── 代码块 + 语法高亮 ── */
+pre {
+    background: #1a2332; border-radius: var(--radius-md); margin: 18px 0;
+    overflow: hidden; border: 1px solid #243447;
+}
+pre .code-header {
+    background: #243447; padding: 7px 14px; font-size: 12px; color: #8ba4b8;
+    font-family: 'JetBrains Mono', monospace; border-bottom: 1px solid #2d4052;
+}
+pre code {
+    display: block; padding: 16px 20px;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.6; color: #e2e8f0; overflow-x: auto;
+}
+pre code .kw { color: #c792ea; }
+pre code .str { color: #c3e88d; }
+pre code .cmt { color: #546e7a; font-style: italic; }
+pre code .num { color: #f78c6c; }
+pre code .func { color: #82aaff; }
+
+/* ── 表格 ── */
+table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    margin: 20px 0; border-radius: var(--radius-md); overflow: hidden;
+    border: 1px solid var(--border-light); font-size: 14px;
+}
+thead th {
+    background: var(--gradient-header); color: #fff; font-weight: 600;
+    padding: 11px 16px; text-align: left; font-size: 13px;
+}
+tbody td { padding: 10px 16px; border-bottom: 1px solid var(--border-light); color: var(--text-secondary); line-height: 1.5; }
+tbody tr:nth-child(odd) { background: var(--bg-white); }
+tbody tr:nth-child(even) { background: var(--bg-gray-50); }
+tbody tr:hover { background: var(--bg-green-50); }
+tbody tr:last-child td { border-bottom: none; }
+
+/* ── 小结框 ── */
+.summary-box {
+    background: var(--bg-white); border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg); padding: 22px 26px; margin-top: 36px;
+    position: relative; box-shadow: var(--shadow-sm);
+}
+.summary-box::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--gradient-soft); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.summary-box h3 { color: var(--primary-dark) !important; border-left: none !important; background: none !important; padding: 0 !important; margin: 0 0 12px 0 !important; font-size: 15px !important; }
+.summary-box ul { list-style: none; padding-left: 0; margin-left: 0; }
+.summary-box li { padding-left: 20px; position: relative; color: var(--text-secondary); margin-bottom: 6px; }
+.summary-box li::before { content: '→'; position: absolute; left: 0; color: var(--primary); font-weight: 600; }
+
+/* ── 流程图 ── */
+.flowchart {
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0;
+    margin: 20px 0; padding: 24px 20px; background: var(--bg-white);
+    border-radius: var(--radius-md); border: 1px solid var(--border-light);
+}
+.flow-step {
+    background: var(--bg-green-50); border: 1px solid rgba(77,184,164,0.2);
+    border-radius: var(--radius-sm); padding: 8px 16px; color: var(--primary-dark);
+    font-size: 13px; font-weight: 500; text-align: center; white-space: nowrap;
+}
+.flow-arrow { color: var(--primary-light); font-size: 18px; margin: 0 5px; flex-shrink: 0; }
+
+/* ── 时间线 ── */
+.timeline { position: relative; padding: 10px 0 10px 34px; margin: 20px 0; }
+.timeline::before {
+    content: ''; position: absolute; left: 9px; top: 0; bottom: 0; width: 2px;
+    background: linear-gradient(180deg, var(--primary), var(--accent)); border-radius: 1px;
+}
+.timeline-item {
+    position: relative; margin-bottom: 14px; padding: 12px 16px;
+    background: var(--bg-white); border-radius: var(--radius-sm); border: 1px solid var(--border-light);
+}
+.timeline-item::before {
+    content: ''; position: absolute; left: -29px; top: 16px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--primary); border: 2px solid var(--bg-page); z-index: 1;
+}
+.timeline-item .step-title { color: var(--primary-dark); font-weight: 600; margin-bottom: 3px; font-size: 14px; }
+.timeline-item p { font-size: 13px; color: var(--text-muted); margin-bottom: 0; }
+
+/* ── 对比区块 ── */
+.compare-block { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0; }
+.compare-item { background: var(--bg-white); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 16px 18px; }
+.compare-item.pros { border-top: 3px solid var(--primary); }
+.compare-item.cons { border-top: 3px solid #f59e0b; }
+.compare-item h4 { margin-top: 0; padding-bottom: 5px; border-bottom: none; font-size: 14px; }
+
+/* ── 架构图（分层/分支结构） ── */
+.arch-diagram {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 20px; background: var(--bg-white);
+    border: 1px solid var(--border-light); border-radius: var(--radius-md); margin: 20px 0;
+}
+.arch-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.arch-node {
+    padding: 8px 18px; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 600; text-align: center; min-width: 90px; line-height: 1.4;
+}
+.arch-node.primary { background: var(--bg-green-50); border: 2px solid var(--primary); color: var(--primary-dark); }
+.arch-node.secondary { background: #fff7ed; border: 2px solid #f59e0b; color: #b45309; }
+.arch-node.accent { background: #eff6ff; border: 2px solid #3b82f6; color: #1e40af; }
+.arch-connector { color: var(--text-muted); font-size: 20px; font-weight: 700; flex-shrink: 0; }
+
+/* ── 多场景卡片 ── */
+.scenario-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0; }
+.scenario-card { padding: 16px 18px; border-radius: var(--radius-md); border-left: 4px solid; }
+.scenario-card h4 { margin-top: 0; font-size: 14px; padding-bottom: 4px; border-bottom: none; }
+.scenario-card ul { margin: 6px 0 0 0; padding-left: 16px; }
+.scenario-card li { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; line-height: 1.5; }
+.scenario-card.blue { border-color: #3b82f6; background: #eff6ff; }
+.scenario-card.blue h4 { color: #1e40af; }
+.scenario-card.green { border-color: var(--primary); background: var(--bg-green-50); }
+.scenario-card.green h4 { color: var(--primary-dark); }
+.scenario-card.purple { border-color: #8b5cf6; background: #f5f3ff; }
+.scenario-card.purple h4 { color: #6d28d9; }
+.scenario-card.orange { border-color: #f59e0b; background: #fffbeb; }
+.scenario-card.orange h4 { color: #b45309; }
+
+/* ━━━ 面试题卡片 ━━━ */
+.question-card {
+    background: var(--bg-white); border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg); margin-bottom: 24px; overflow: hidden;
+    transition: box-shadow 0.2s;
+}
+.question-card:hover { box-shadow: var(--shadow-card-hover); }
+.question-header {
+    background: var(--gradient-header-dark); padding: 14px 22px;
+    font-size: 15px; font-weight: 600; color: #fff;
+}
+.question-section { padding: 14px 22px; border-bottom: 1px solid var(--border-light); }
+.question-section:last-child { border-bottom: none; }
+.question-section h4 {
+    color: var(--primary-dark); font-size: 12px; font-weight: 700;
+    margin-bottom: 6px; margin-top: 0; padding-bottom: 0; border-bottom: none;
+    text-transform: uppercase; letter-spacing: 2px;
+}
+.question-section p { margin-bottom: 6px; font-size: 14px; }
+.question-section.answer-section { background: var(--bg-gray-50); }
+.question-section.followup-section { background: var(--bg-green-50); }
+.keyword-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.keyword-tags .tag {
+    background: var(--bg-green-50); border: 1px solid rgba(77,184,164,0.2);
+    color: var(--primary-dark); padding: 3px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 500;
+}
+
+/* ── 面试评分标准 ── */
+.scoring-rubric {
+    border: 1px solid var(--border-light); border-radius: var(--radius-md);
+    overflow: hidden; margin: 12px 22px 14px 22px;
+}
+.score-level {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 18px; border-bottom: 1px solid var(--border-light); font-size: 13px;
+}
+.score-level:last-child { border-bottom: none; }
+.score-level p { margin: 0; color: var(--text-secondary); line-height: 1.5; }
+.score-badge {
+    display: inline-block; padding: 2px 10px; border-radius: 10px;
+    font-size: 12px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
+}
+.score-excellent { background: #f0fdf4; }
+.score-excellent .score-badge { background: #dcfce7; color: #15803d; }
+.score-pass { background: #fefce8; }
+.score-pass .score-badge { background: #fef3c7; color: #b45309; }
+.score-fail { background: #fef2f2; }
+.score-fail .score-badge { background: #fee2e2; color: #dc2626; }
+
+/* ── 30秒速答（面试类） ── */
+.question-section.quick-answer {
+    background: linear-gradient(135deg, #ecfdf5, #f0fdf4);
+    border-bottom: 1px solid rgba(77,184,164,0.2);
+}
+.question-section.quick-answer h4 { color: #059669; font-size: 12px; }
+.question-section.quick-answer h4::before { content: '\26A1 '; }
+.question-section.quick-answer p { color: #065f46; font-weight: 500; font-size: 15px; line-height: 1.7; }
+
+/* ── 动手试一试 ── */
+.practice-box {
+    background: linear-gradient(135deg, var(--bg-teal-50) 0%, var(--bg-green-50) 100%);
+    border: 1px solid rgba(77,184,164,0.25);
+    border-left: 4px solid var(--primary);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    padding: 20px 22px; margin: 24px 0;
+}
+.practice-box::before {
+    content: '\1F527  动手试一试'; display: block; font-weight: 700;
+    color: var(--primary-dark); font-size: 15px; margin-bottom: 10px;
+    padding-bottom: 8px; border-bottom: 1px dashed rgba(77,184,164,0.25);
+}
+.practice-box h4 { display: none; }
+.practice-box ol, .practice-box ul { margin: 8px 0 0 0; padding-left: 20px; }
+.practice-box li { color: var(--text-secondary); margin-bottom: 6px; line-height: 1.7; }
+.practice-box p { color: var(--text-secondary); margin-bottom: 8px; }
+.practice-box code {
+    background: rgba(77,184,164,0.1); padding: 1px 6px; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--primary-dark);
+}
+
+/* ── 检验你的理解 ── */
+.self-check {
+    background: #fefce8; border: 1px solid rgba(245,158,11,0.2);
+    border-left: 4px solid #f59e0b;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    padding: 20px 22px; margin: 24px 0;
+}
+.self-check::before {
+    content: '\2753  检验你的理解'; display: block; font-weight: 700;
+    color: #b45309; font-size: 15px; margin-bottom: 10px;
+    padding-bottom: 8px; border-bottom: 1px dashed rgba(245,158,11,0.3);
+}
+.self-check h4 { display: none; }
+.self-check ol { margin: 8px 0 0 0; padding-left: 20px; counter-reset: check-counter; list-style: none; }
+.self-check ol li { counter-increment: check-counter; position: relative; padding-left: 8px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.7; }
+.self-check ol li::before { content: 'Q' counter(check-counter); position: absolute; left: -20px; color: #d97706; font-weight: 700; font-size: 13px; }
+.self-check p { color: var(--text-secondary); margin-bottom: 6px; }
+.self-check .check-answer { color: var(--text-muted); font-size: 13px; font-style: italic; margin-top: 4px; }
+
+/* ── 编者提示 ── */
+.editor-note {
+    background: linear-gradient(135deg, #eff6ff, #f0f7ff);
+    border: 1px solid rgba(59,130,246,0.15);
+    border-left: 3px solid #3b82f6;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 12px 16px; margin: 18px 0; font-size: 14px; color: #1e40af; line-height: 1.7;
+}
+.editor-note::before {
+    content: '\1f4d6  编者提示'; display: inline-block; font-weight: 700;
+    font-size: 11px; letter-spacing: 1.5px; margin-right: 8px;
+    padding: 1px 7px; background: rgba(59,130,246,0.1); border-radius: 3px; color: #2563eb;
+}
+
+/* ── 难度标签 ── */
+.difficulty-tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; }
+.diff-beginner { background: #dcfce7; color: #15803d; }
+.diff-intermediate { background: #fef3c7; color: #b45309; }
+.diff-advanced { background: #fee2e2; color: #dc2626; }
+
+/* ━━━ 章节导航栏 ━━━ */
+.chapter-nav {
+    display: flex; justify-content: center; align-items: center; gap: 12px;
+    margin-top: 40px; padding: 0 20px;
+}
+.chapter-nav a {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 24px; border-radius: var(--radius-md);
+    font-size: 14px; font-weight: 600; text-decoration: none;
+    transition: all 0.2s ease; cursor: pointer;
+}
+.chapter-nav .nav-prev,
+.chapter-nav .nav-next {
+    background: var(--bg-white); color: var(--primary);
+    border: 1px solid rgba(77,184,164,0.25);
+}
+.chapter-nav .nav-prev:hover,
+.chapter-nav .nav-next:hover {
+    background: var(--bg-green-50); border-color: var(--primary);
+    box-shadow: 0 2px 8px rgba(77,184,164,0.12);
+}
+.chapter-nav .nav-catalog {
+    background: var(--gradient-main); color: #fff; border: none;
+}
+.chapter-nav .nav-catalog:hover {
+    opacity: 0.9; box-shadow: 0 2px 8px rgba(77,184,164,0.25);
+}
+.chapter-nav .nav-placeholder {
+    width: 120px;
+}
+
+/* ━━━ 页脚 ━━━ */
+.page-footer {
+    text-align: center; padding: 28px 0 16px 0; color: var(--text-muted);
+    font-size: 12px; letter-spacing: 1px;
+    border-top: 1px solid var(--border-light); margin-top: 24px;
+}
+
+/* ━━━ 移动端适配 ━━━ */
+@media (max-width: 768px) {
+    body { font-size: 14px; line-height: 1.75; }
+
+    /* 目录页 */
+    .catalog-container { padding: 0 12px 20px; }
+    .catalog-hero { padding: 22px 16px 18px; }
+    .catalog-hero h1 { font-size: 20px; }
+    .catalog-hero .subtitle { font-size: 15px; }
+    .stats-bar { gap: 10px; padding: 10px 8px; flex-wrap: wrap; }
+    .stats-number { font-size: 17px; }
+    .stats-label { font-size: 11px; }
+    .catalog-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .card-title { font-size: 13px; min-height: auto; }
+    .card-points li { font-size: 11px; }
+
+    /* 章节页 */
+    .chapter-container { padding: 20px 14px; }
+    .chapter-header { padding: 18px 16px; margin-bottom: 20px; }
+    .chapter-header h2 { font-size: 18px; }
+
+    /* 导读卡片 */
+    .guide-meta { flex-direction: column; }
+    .guide-meta-item { border-right: none; border-bottom: 1px solid var(--border-light); padding: 8px 14px; font-size: 12px; }
+    .guide-meta-item:last-child { border-bottom: none; }
+    .guide-body { padding: 14px 14px 16px; }
+    .guide-learn ul { flex-direction: column; gap: 2px; }
+    .guide-concept-tag { font-size: 12px; padding: 2px 10px; }
+
+    /* 正文 */
+    .chapter-content h3 { font-size: 15px; padding: 8px 12px; margin: 24px 0 10px 0; }
+    .chapter-content h4 { font-size: 14px; }
+    .chapter-content p { font-size: 14px; line-height: 1.8; }
+
+    /* 表格横向滚动 */
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+    thead th { padding: 8px 10px; font-size: 12px; white-space: nowrap; }
+    tbody td { padding: 8px 10px; font-size: 13px; white-space: nowrap; }
+
+    /* 代码块 */
+    pre code { padding: 12px 10px; font-size: 12px; }
+
+    /* 流程图：允许换行 */
+    .flowchart { padding: 14px 10px; gap: 4px; }
+    .flow-step { font-size: 12px; padding: 6px 10px; }
+    .flow-arrow { font-size: 16px; margin: 0 2px; }
+
+    /* 架构图 */
+    .arch-diagram { padding: 14px 10px; }
+    .arch-row { gap: 4px; }
+    .arch-node { padding: 6px 10px; font-size: 12px; min-width: 70px; }
+    .arch-connector { font-size: 16px; }
+
+    /* 双列布局改单列 */
+    .scenario-grid { grid-template-columns: 1fr; gap: 10px; }
+    .compare-block { grid-template-columns: 1fr; gap: 10px; }
+
+    /* 提示框/概念块 */
+    .concept-block, .key-point { padding: 14px 14px; }
+    .tip-box { padding: 12px 14px; }
+    .editor-note { padding: 10px 12px; font-size: 13px; }
+
+    /* 动手试一试 / 自测题 / 小结 */
+    .practice-box { padding: 14px 14px; }
+    .self-check { padding: 14px 14px; }
+    .summary-box { padding: 16px 16px; }
+
+    /* 面试题卡片 */
+    .question-header { padding: 10px 14px; font-size: 14px; }
+    .question-section { padding: 10px 14px; }
+    .scoring-rubric { margin: 10px 14px 12px; }
+    .score-level { padding: 8px 12px; gap: 8px; flex-direction: column; }
+
+    /* 导航栏 */
+    .chapter-nav { flex-direction: column; gap: 8px; padding: 0 10px; }
+    .chapter-nav a { padding: 8px 16px; font-size: 13px; justify-content: center; width: 100%; }
+    .chapter-nav .nav-placeholder { display: none; }
+}
+
+
+/* ━━━ 广告：章节页眉品牌文字（零占位，不影响间距） ━━━ */
+.header-brand {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--primary);
+    letter-spacing: 2px;
+    opacity: 0.85;
+    line-height: 1;
+    padding: 0;
+    margin: 0;
+    height: 0;
+    overflow: visible;
+    position: relative;
+    top: -22px;
+    z-index: 1;
+}
+
+/* ━━━ 广告：页脚品牌行 ━━━ */
+.footer-brand {
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+/* ━━━ 广告：完整横幅 ━━━ */
+.ad-banner {
+    margin: 36px 0 0 0;
+    padding: 24px 28px;
+    background: var(--bg-gray-50);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+.ad-banner::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--gradient-soft);
+}
+.ad-banner .ad-brand {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--primary-dark);
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+}
+.ad-banner .ad-divider {
+    width: 60%;
+    margin: 8px auto;
+    border: none;
+    border-top: 1px dashed var(--border-default);
+}
+.ad-banner .ad-tagline {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    line-height: 1.6;
+}
+.ad-banner .ad-cta-btn {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 10px 32px;
+    background: var(--gradient-main);
+    color: #fff;
+    border-radius: 50px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.ad-banner .ad-cta-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+.ad-banner .ad-offers {
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.8;
+}
+.ad-banner .ad-links {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.ad-banner .ad-links a {
+    color: var(--primary);
+    text-decoration: none;
+}
+.ad-banner .ad-links a:hover {
+    text-decoration: underline;
+}
+.ad-banner .ad-offer-highlight {
+    font-weight: 700;
+    color: var(--primary-dark);
+    font-size: 14px;
+}
+
+/* ━━━ 目录页品牌文字（hero与stats-bar之间的白色间隙，零占位） ━━━ */
+.catalog-brand {
+    text-align: center;
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    opacity: 0.85;
+    line-height: 1;
+    padding: 0;
+    margin: 0;
+    height: 0;
+    overflow: visible;
+    position: relative;
+    top: -16px;
+    z-index: 1;
+}
+
+@media (max-width: 768px) {
+    .header-brand { font-size: 10px; top: -15px; }
+    .ad-banner { padding: 16px 14px; }
+    .ad-banner .ad-brand { font-size: 14px; }
+    .ad-banner .ad-tagline { font-size: 13px; }
+    .ad-banner .ad-cta-btn { padding: 8px 24px; font-size: 13px; }
+    .catalog-brand { font-size: 10px; top: -11px; }
+}
+
+</style>
+</head>
+<body>
+    <div class="chapter-container">
+        <div class="chapter-content">
+<div class="chapter-header"><h2>第9章 Flash编程接口详解</h2></div>
+        <div class="header-brand">码枢沄社 · 嵌入式体系化教程平台</div>
+
+<div class="chapter-guide">
+  <div class="guide-meta">
+    <span class="guide-meta-item"><span class="difficulty-tag diff-beginner">入门</span></span>
+    <span class="guide-meta-item"><span class="meta-icon">👤</span> 需要了解STM32基础编程的开发者</span>
+    <span class="guide-meta-item"><span class="meta-icon">🔧</span> 实现Bootloader固件写入功能</span>
+  </div>
+  <div class="guide-body">
+    <div class="guide-learn"><div class="guide-learn-label">本章你将学到</div><ul><li>STM32内部Flash的组织结构</li><li>HAL库Flash编程的关键API</li><li>安全擦除与写入的完整流程</li></ul></div>
+    <div class="guide-concepts"><span class="guide-concepts-label">核心概念</span><span class="guide-concept-tag">扇区</span><span class="guide-concept-tag">解锁</span></div>
+  </div>
+</div>
+
+<p>当你通过串口接收到完整的固件数据包并完成校验后，下一步就是将这些数据写入芯片的Flash存储器。这个过程就像给手机安装一个新应用，你需要先清理出足够的存储空间（擦除），再把安装包（固件）写入指定位置。STM32的Flash编程接口就是完成这项工作的工具。</p>
+
+<div class="concept-block">
+<h4>什么是Flash扇区？</h4>
+<p>你可以把STM32的内部Flash想象成一本书，这本书被分成了很多页，每一页就是一个“扇区”。在写入新内容前，你必须整页擦除，而不能只擦除其中的几个字。不同型号的STM32，这本书的“页数”和“每页大小”都不同。例如，STM32F103系列通常有128KB的Flash，被分成若干64KB和16KB的扇区；而STM32F407系列可能有1MB的Flash，扇区大小从16KB到128KB不等。</p>
+</div>
+
+<h3>STM32 Flash内存布局</h3>
+<p>在进行任何Flash操作前，你必须清楚目标芯片的Flash具体是如何划分的。这是所有操作的基础。</p>
+
+<table>
+<thead><tr><th>STM32系列</th><th>典型Flash容量</th><th>扇区划分示例 (Sector 0开始)</th><th>关键特性</th></tr></thead>
+<tbody>
+<tr><td>STM32F1 (小容量)</td><td>64KB</td><td>1KB x 64页 (无标准扇区)</td><td>按页操作，必须先解锁</td></tr>
+<tr><td>STM32F1 (中/大容量)</td><td>128KB/512KB</td><td>Sector 0-3: 16KB, Sector 4: 64KB</td><td>扇区大小不一，需查手册</td></tr>
+<tr><td>STM32F4</td><td>1MB</td><td>Sector 0-3: 16KB, Sector 4: 64KB, Sector 5-11: 128KB</td><td>支持双BANK，可边读边写</td></tr>
+<tr><td>STM32G0</td><td>64KB</td><td>2KB x 32页</td><td>页操作，擦除时间短</td></tr>
+</tbody>
+</table>
+
+<p>实际开发中，大部分团队会为每个项目维护一个“memory_map.h”头文件，里面明确定义了Bootloader区、应用程序区、参数存储区各自占用的扇区编号和起始地址。我在项目中踩过这个坑：曾经误将应用程序写入了Bootloader的扇区，导致芯片“变砖”，只能通过串口ISP模式才能救回。</p>
+
+<div class="key-point">
+<h4>关键点：如何获取正确的扇区信息？</h4>
+<p>不要硬编码扇区信息。STM32Cube HAL库提供了宏定义来帮助你。对于STM32F4系列，你可以使用<code>FLASH_SECTOR_0</code>到<code>FLASH_SECTOR_11</code>这些宏。更通用的方法是查阅对应芯片型号的数据手册（Datasheet）或参考手册（Reference Manual）中的“Flash memory organization”章节。在代码中，将起始地址和扇区号的映射关系用常量数组定义，是可靠的做法。</p>
+</div>
+
+<h3>HAL库Flash编程核心API</h3>
+<p>STM32Cube HAL库将复杂的Flash寄存器操作封装成了几个清晰的函数。整个编程流程可以概括为三个步骤：解锁、擦除、写入。</p>
+
+<div class="arch-diagram">
+  <div class="arch-row">
+    <div class="arch-node primary">解锁Flash</div>
+    <span class="arch-connector">→</span>
+    <div class="arch-node secondary">擦除目标扇区</div>
+    <span class="arch-connector">→</span>
+    <div class="arch-node accent">编程（写入）数据</div>
+  </div>
+  <div class="arch-row"><span class="arch-connector">↓</span></div>
+  <div class="arch-row">
+    <div class="arch-node primary">锁定Flash</div>
+    <span class="arch-connector">←</span>
+    <div class="arch-node accent">验证与状态检查</div>
+  </div>
+</div>
+
+<p>下面我们逐一拆解每个步骤需要用到的关键函数和注意事项。</p>
+
+<h4>第一步：解锁与锁定</h4>
+<p>为了防止程序跑飞意外修改Flash内容，STM32在上电后默认将Flash编程接口锁住。在进行擦写操作前，必须输入一个特定的“密钥”来解锁。</p>
+
+<pre><code><span class="cmt">// 解锁Flash控制寄存器</span>
+<span class="kw">if</span> (<span class="func">HAL_FLASH_Unlock</span>() != HAL_OK) {
+    <span class="cmt">// 解锁失败处理，可能是硬件错误</span>
+    <span class="func">Error_Handler</span>();
+}
+
+<span class="cmt">// ... 执行擦除和写入操作 ...</span>
+
+<span class="cmt">// 操作完成后，重新上锁</span>
+<span class="kw">if</span> (<span class="func">HAL_FLASH_Lock</span>() != HAL_OK) {
+    <span class="cmt">// 上锁失败处理（较少见）</span>
+}</code></pre>
+
+<div class="tip-box warning">
+<h4>常见误区</h4>
+<ul>
+<li><strong>忘记解锁直接操作</strong>：这是最常见的错误，会导致程序卡死在Flash操作函数里。如果你发现程序执行到<code>HAL_FLASHEx_Erase</code>就停了，第一个要检查的就是解锁是否成功。</li>
+<li><strong>解锁后未关闭全局中断</strong>：在擦写过程中，如果发生中断，可能会打断关键时序，导致操作失败或数据错误。安全的做法是在擦写期间暂时关闭中断。</li>
+<li><strong>跨扇区写入</strong>：试图一次性写入跨越两个扇区的数据。你必须确保每次写入的地址范围完全落在同一个已擦除的扇区内。</li>
+</ul>
+</div>
+
+<h4>第二步：扇区擦除</h4>
+<p>擦除操作是以扇区为最小单位的。你需要填充一个擦除配置结构体，指定要擦除的扇区，然后调用函数。</p>
+
+<pre><code><span class="kw">static</span> <span class="kw">void</span> <span class="func">Flash_Erase_Sector</span>(<span class="kw">uint32_t</span> sector) {
+    FLASH_EraseInitTypeDef EraseInitStruct = {0};
+    <span class="kw">uint32_t</span> SectorError = 0;
+
+    <span class="cmt">// 配置擦除参数</span>
+    EraseInitStruct.TypeErase = FLASH_TYPEERASE_SECTORS; <span class="cmt">// 按扇区擦除</span>
+    EraseInitStruct.Banks = FLASH_BANK_1; <span class="cmt">// 对于单BANK芯片</span>
+    EraseInitStruct.Sector = sector;      <span class="cmt">// 要擦除的扇区号</span>
+    EraseInitStruct.NbSectors = 1;        <span class="cmt">// 擦除1个扇区</span>
+    EraseInitStruct.VoltageRange = FLASH_VOLTAGE_RANGE_3; <span class="cmt">// 电压范围，通常为3</span>
+
+    <span class="cmt">// 执行擦除，并检查错误</span>
+    <span class="kw">if</span> (<span class="func">HAL_FLASHEx_Erase</span>(&amp;EraseInitStruct, &amp;SectorError) != HAL_OK) {
+        <span class="cmt">// SectorError会返回出错的扇区号</span>
+        <span class="func">Error_Handler</span>();
+    }
+}</code></pre>
+
+<div class="editor-note">
+<p><strong>编者提示：关于FLASH_VOLTAGE_RANGE参数</strong><br>
+这个参数容易被忽略，但它很重要。它需要根据芯片的实际工作电压来设置。对于大部分工作在2.7V-3.6V的STM32（如F1、F4系列），应使用<code>FLASH_VOLTAGE_RANGE_3</code>。如果设置错误，可能导致擦除不彻底或写入不可靠。具体值请查阅HAL库头文件（如`stm32f4xx_hal_flash_ex.h`）中的定义和芯片数据手册。</p>
+</div>
+
+<h4>第三步：数据编程（写入）</h4>
+<p>擦除后的Flash位全部为1（0xFF）。写入操作就是将相应的位从1变为0。HAL库提供了按8位、16位、32位和64位写入的接口。为了提高效率，我们通常使用64位（双字）写入。</p>
+
+<pre><code><span class="kw">static</span> HAL_StatusTypeDef <span class="func">Flash_Write_DoubleWord</span>(<span class="kw">uint32_t</span> address, <span class="kw">uint64_t</span> data) {
+    <span class="cmt">// 检查地址是否8字节对齐（64位写入的必要条件）</span>
+    <span class="kw">if</span> ((address &amp; 0x7) != 0) {
+        <span class="kw">return</span> HAL_ERROR;
+    }
+    <span class="kw">return</span> <span class="func">HAL_FLASH_Program</span>(FLASH_TYPEPROGRAM_DOUBLEWORD, address, data);
+}
+
+<span class="cmt">// 写入一个32位数组的示例</span>
+<span class="kw">static</span> HAL_StatusTypeDef <span class="func">Flash_Write_Array</span>(<span class="kw">uint32_t</span> dest_addr, <span class="kw">uint32_t</span> *src_data, <span class="kw">uint32_t</span> len_words) {
+    HAL_StatusTypeDef status = HAL_OK;
+    <span class="kw">uint32_t</span> i;
+    <span class="kw">uint64_t</span> double_word;
+
+    <span class="kw">for</span> (i = 0; i &lt; len_words; i += 2) { <span class="cmt">// 每次处理2个32位字</span>
+        <span class="cmt">// 组合两个32位字为一个64位双字</span>
+        double_word = (<span class="kw">uint64_t</span>)src_data[i];
+        <span class="kw">if</span> (i + 1 &lt; len_words) {
+            double_word |= ((<span class="kw">uint64_t</span>)src_data[i + 1] &lt;&lt; <span class="num">32</span>);
+        } <span class="kw">else</span> {
+            <span class="cmt">// 如果数组长度为奇数，最后一个双字的高32位补0</span>
+            double_word |= ((<span class="kw">uint64_t</span>)<span class="num">0</span> &lt;&lt; <span class="num">32</span>);
+        }
+        status = <span class="func">Flash_Write_DoubleWord</span>(dest_addr + (i * <span class="num">4</span>), double_word);
+        <span class="kw">if</span> (status != HAL_OK) {
+            <span class="kw">break</span>;
+        }
+    }
+    <span class="kw">return</span> status;
+}</code></pre>
+
+<p>这里有个隐藏的坑：Flash写入地址必须对齐。64位写入要求地址是8的倍数，32位写入要求地址是4的倍数。如果你看到“编程对齐错误”或程序在此处进入硬故障，首先检查地址对齐问题。</p>
+
+<h3>完整的Flash操作流程与错误处理</h3>
+<p>将解锁、擦除、写入和锁定组合起来，并加入严格的错误处理，就构成了一个健壮的Flash编程模块。一个典型的流程如下：</p>
+
+<div class="flowchart">
+  <div class="flow-step">开始写入流程</div><span class="flow-arrow">→</span>
+  <div class="flow-step">关闭全局中断</div><span class="flow-arrow">→</span>
+  <div class="flow-step">调用HAL_FLASH_Unlock()</div>
+</div>
+<div class="flowchart">
+  <div class="flow-step">成功？</div><span class="flow-arrow">→</span>
+  <div class="flow-step">否 → 记录错误，退出</div>
+</div>
+<div class="flowchart">
+  <div class="flow-step">是</div><span class="flow-arrow">→</span>
+  <div class="flow-step">调用HAL_FLASHEx_Erase()</div><span class="flow-arrow">→</span>
+  <div class="flow-step">成功？</div>
+</div>
+<div class="flowchart">
+  <div class="flow-step">否 → 记录错误扇区号</div><span class="flow-arrow">→</span>
+  <div class="flow-step">调用HAL_FLASH_Lock()</div><span class="flow-arrow">→</span>
+  <div class="flow-step">退出</div>
+</div>
+<div class="flowchart">
+  <div class="flow-step">是</div><span class="flow-arrow">→</span>
+  <div class="flow-step">循环写入数据块</div><span class="flow-arrow">→</span>
+  <div class="flow-step">每次写入后检查状态</div>
+</div>
+<div class="flowchart">
+  <div class="flow-step">全部成功？</div><span class="flow-arrow">→</span>
+  <div class="flow-step">否 → 记录错误地址</div>
+</div>
+<div class="flowchart">
+  <div class="flow-step">是</div><span class="flow-arrow">→</span>
+  <div class="flow-step">调用HAL_FLASH_Lock()</div><span class="flow-arrow">→</span>
+  <div class="flow-step">恢复全局中断</div><span class="flow-arrow">→</span>
+  <div class="flow-step">返回成功</div>
+</div>
+
+<p>错误处理至关重要。HAL库提供了<code>HAL_FLASH_GetError()</code>函数来获取详细的错误代码。常见的错误包括：</p>
+<ul>
+<li><code>HAL_FLASH_ERROR_PGA</code>：编程对齐错误。</li>
+<li><code>HAL_FLASH_ERROR_WRP</code>：写保护错误（试图写入被保护的扇区）。</li>
+<li><code>HAL_FLASH_ERROR_OPTV</code>：选项字节相关错误。</li>
+</ul>
+<p>在实际开发中，你应该在每次Flash操作后检查返回值，并将错误信息通过日志或LED指示出来，这能极大地方便后续的调试和问题定位。</p>
+
+<div class="scenario-grid">
+  <div class="scenario-card blue"><h4>场景：升级小型应用</h4><ul><li>应用固件小于一个扇区</li><li>流程：解锁 → 擦除目标扇区 → 写入数据 → 锁定</li><li>注意：擦除会清除同扇区内其他数据</li></ul></div>
+  <div class="scenario-card green"><h4>场景：升级大型应用</h4><ul><li>应用固件跨多个扇区</li><li>流程：循环处理每个扇区（擦除→写入该扇区部分数据）</li><li>关键：管理好地址偏移，避免数据覆盖错误</li></ul></div>
+  <div class="scenario-card purple"><h4>场景：写入配置参数</h4><ul><li>写入少量非代码数据（如校准值、序列号）</li><li>可考虑使用最后一个扇区，避免频繁擦写主程序区</li><li>需要实现磨损均衡或ECC校验以提升可靠性</li></ul></div>
+</div>
+
+<div class="practice-box">
+<h4>动手试一试</h4>
+<p>在你的STM32开发板上（建议使用STM32F4 Discovery或Nucleo板），创建一个简单的测试工程。编写一个函数，将内部Flash的最后一个扇区（请根据你的板子型号确定扇区号）擦除，然后写入一组固定的测试数据（例如一个递增的数组）。之后，再编写一个读取函数，将写入的数据读出来并通过串口打印，验证写入是否正确。这个练习能让你直观感受Flash擦写的完整过程。</p>
+</div>
+
+<div class="self-check">
+<h4>检验你的理解</h4>
+<ol>
+<li>判断题：STM32的Flash在写入新数据前，可以直接覆盖旧数据，不需要先擦除。</li>
+<li>选择题：在使用HAL库进行Flash编程时，第一步必须调用的函数是：
+   <br>A. HAL_FLASHEx_Erase()
+   <br>B. HAL_FLASH_Unlock()
+   <br>C. HAL_FLASH_Program()
+   <br>D. HAL_FLASH_Lock()</li>
+<li>判断题：为了提升写入速度和安全，在Flash擦写操作期间，最好保持全局中断开启。</li>
+</ol>
+</div>
+
+<div class="summary-box">
+<h3>本章小结</h3>
+<ul>
+<li>STM32内部Flash被划分为多个扇区，擦除操作以扇区为单位，写入操作需要地址对齐。</li>
+<li>使用HAL库进行Flash编程的标准流程是：解锁（Unlock）→ 擦除（Erase）→ 编程（Program）→ 锁定（Lock）。</li>
+<li>必须在擦写期间关闭全局中断，并在每次操作后检查HAL返回值，进行详细的错误处理。</li>
+<li>不同系列的STM32芯片（如F1、F4、G0）其Flash扇区大小和组织方式不同，编程前务必查阅对应芯片的参考手册。</li>
+<li>一个健壮的Flash驱动模块是Bootloader可靠工作的基石，需要仔细设计其流程和错误恢复机制。</li>
+</ul>
+</div>
+
+</div>
+        
+        <div class="chapter-nav">
+            <a href="08.html" class="nav-prev">&larr; 上一章</a>
+            <a href="00.html" class="nav-catalog">返回目录</a>
+            <a href="10.html" class="nav-next">下一章 &rarr;</a>
+        </div>
+        <div class="page-footer">
+            <div class="footer-brand">码枢沄社 · 嵌入式体系化教程平台</div>
+            — STM32Cube Bootloader开发与IAP固件升级从入门到精通 · 第9章 —
+        </div>
+    </div>
+</body>
+</html>

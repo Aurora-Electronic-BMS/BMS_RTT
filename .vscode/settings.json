@@ -1,0 +1,50 @@
+{
+    "VsCodeTaskButtons.tasks": [
+        {
+            "label": "$(debug-start) 全烧 (BL+APP)",
+            "task": "Flash All (Bootloader + Firmware)",
+            "tooltip": "编译并一次性烧录 Bootloader(0x08000000) + APP(0x08010000)（先自动编译）"
+        },
+        {
+            "label": "$(rocket) 单烧 APP",
+            "task": "Flash Firmware (0x08010000)",
+            "tooltip": "仅烧录 APP → 0x08010000（先自动编译）"
+        },
+        {
+            "label": "$(file-binary) IAP 串口升级",
+            "task": "IAP 串口升级 APP (BMS 协议)",
+            "tooltip": "通过 COM7 用 BMS 协议无线升级 APP（需先烧好 bootloader）"
+        },
+        {
+            "label": "$(list-unordered) 更多",
+            "tasks": [
+                "$(play) Build Bootloader",
+                "$(play) Build Firmware",
+                "$(zap) Clean Bootloader",
+                "$(zap) Clean Firmware",
+                "$(beaker) Read Flash Dumps",
+                "$(debug-restart) Reset (HW Reset)",
+                "$(window-new) Open IAP GUI"
+            ],
+            "tooltip": "展开查看更多任务"
+        }
+    ],
+    "MicroPython.executeButton": [
+        {
+            "text": "▶",
+            "tooltip": "运行",
+            "alignment": "left",
+            "command": "extension.executeFile",
+            "priority": 3.5
+        }
+    ],
+    "MicroPython.syncButton": [
+        {
+            "text": "$(sync)",
+            "tooltip": "同步",
+            "alignment": "left",
+            "command": "extension.execute",
+            "priority": 4
+        }
+    ]
+}
