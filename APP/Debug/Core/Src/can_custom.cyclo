@@ -1,0 +1,12 @@
+../Core/Src/can_custom.c:60:6:can_rx_pullup	1
+../Core/Src/can_custom.c:78:19:can_init	9
+../Core/Src/can_custom.c:113:19:can_send_status	7
+../Core/Src/can_custom.c:158:19:can_send_charge_req	1
+../Core/Src/can_custom.c:168:6:ftcan_msg_received_cb	5
+../Core/Src/can_custom.c:196:5:can_custom_msg_pop	2
+../Core/Src/can_custom.c:206:10:can_custom_drop_count	1
+../Core/Src/can_custom.c:214:6:can_custom_dispatch	8
+../Core/Src/can_custom.c:246:6:can_custom_selftest	2
+../Core/Src/can_custom.c:254:6:can_custom_selftest_tick	5
+../Core/Src/can_custom.c:304:6:charge_cmd_check	3
+../Core/Src/can_custom.c:319:5:charge_inject	2

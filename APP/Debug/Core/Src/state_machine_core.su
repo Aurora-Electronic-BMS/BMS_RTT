@@ -1,0 +1,11 @@
+../Core/Src/state_machine_core.c:44:6:ts_fsm_init	64	static
+../Core/Src/state_machine_core.c:54:6:ts_fsm_apply_serial_timeout	16	static
+../Core/Src/state_machine_core.c:68:16:fsm_inactive	24	static
+../Core/Src/state_machine_core.c:88:16:fsm_active	24	static
+../Core/Src/state_machine_core.c:108:16:fsm_precharge	32	static
+../Core/Src/state_machine_core.c:136:16:fsm_discharge	24	static
+../Core/Src/state_machine_core.c:162:16:fsm_error	24	static
+../Core/Src/state_machine_core.c:207:16:fsm_charge	24	static
+../Core/Src/state_machine_core.c:233:16:fsm_pre_hold	32	static
+../Core/Src/state_machine_core.c:264:16:fsm_precharge_timeout	16	static
+../Core/Src/state_machine_core.c:284:6:ts_fsm_step	40	static

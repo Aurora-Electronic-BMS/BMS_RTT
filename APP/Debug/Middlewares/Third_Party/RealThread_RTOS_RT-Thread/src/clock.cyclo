@@ -1,0 +1,5 @@
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/clock.c:29:6:rt_system_tick_init	1
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/clock.c:44:11:rt_tick_get	1
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/clock.c:54:6:rt_tick_set	1
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/clock.c:67:6:rt_tick_increase	2
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/clock.c:101:11:rt_tick_from_millisecond	2

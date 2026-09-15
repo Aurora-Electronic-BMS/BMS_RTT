@@ -1,0 +1,9 @@
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/mem.c:74:6:rt_malloc_sethook	16	static
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/mem.c:85:6:rt_free_sethook	16	static
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/mem.c:143:13:plug_holes	24	static
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/mem.c:191:6:rt_system_heap_init	32	static
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/mem.c:259:7:rt_malloc	40	static
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/mem.c:408:7:rt_realloc	48	static
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/mem.c:512:7:rt_calloc	24	static
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/mem.c:533:6:rt_free	24	static
+../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/src/mem.c:600:6:rt_memory_info	24	static

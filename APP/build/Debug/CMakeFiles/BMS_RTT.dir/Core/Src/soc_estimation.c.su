@@ -1,0 +1,4 @@
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:45:12:soc_has_current	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:49:6:soc_init	4	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:58:6:soc_update	24	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:103:14:ocv_soc_update	48	static

@@ -1,0 +1,3 @@
+../Core/Src/shunt_monitor.c:12:6:shunt_init	4	static
+../Core/Src/shunt_monitor.c:26:6:shunt_check	16	static
+../Core/Src/shunt_monitor.c:55:6:shunt_handle_can_message	32	static

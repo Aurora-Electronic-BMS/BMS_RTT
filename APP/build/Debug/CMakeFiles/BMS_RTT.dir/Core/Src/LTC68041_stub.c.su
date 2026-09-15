@@ -1,0 +1,7 @@
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/LTC68041_stub.c:16:6:LTC6804_initialize	4	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/LTC68041_stub.c:18:6:LTC6804_adcv	4	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/LTC68041_stub.c:20:6:LTC6804_adax	4	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/LTC68041_stub.c:22:6:LTC6804_clrcell	4	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/LTC68041_stub.c:24:6:LTC6804_clraux	4	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/LTC68041_stub.c:26:9:LTC6804_rdcv	24	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/LTC68041_stub.c:36:8:LTC6804_rdaux	24	static

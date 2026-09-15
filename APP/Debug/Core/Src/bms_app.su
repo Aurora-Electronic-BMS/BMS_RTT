@@ -1,0 +1,7 @@
+../Core/Src/bms_app.c:43:6:bms_can_rx_notify	8	static
+../Core/Src/bms_app.c:50:13:bms_can_rx_entry	40	static
+../Core/Src/bms_app.c:66:13:bms_delay_until	32	static
+../Core/Src/bms_app.c:81:13:bms_ctrl_entry	104	static
+../Core/Src/bms_app.c:163:13:bms_telemetry_entry	16	static
+../Core/Src/bms_app.c:176:12:bms_app_init	8	static
+../Core/Src/bms_app.c:183:6:bms_app_start	24	static

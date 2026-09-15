@@ -1,0 +1,12 @@
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:38:13:bms_log_v	216	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:66:6:bms_log	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:73:6:bms_log_force	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:132:6:bms_tx_lock	8	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:137:6:bms_tx_unlock	8	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:142:6:bms_state_lock	8	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:147:6:bms_state_unlock	8	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:153:6:bms_io_init	8	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:177:19:sig_find	24	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:188:13:io_emit	24	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:196:6:bms_out	32	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/bms_io.c:226:15:bms_in	24	static
