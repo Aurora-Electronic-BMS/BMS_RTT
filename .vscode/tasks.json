@@ -2,12 +2,76 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "Configure Firmware",
+            "type": "process",
+            "command": "D:/STM32CubeCLT_1.18.0/CMake/bin/cmake.exe",
+            "args": ["--preset", "Debug"],
+            "options": {
+                "cwd": "${workspaceFolder}/APP",
+                "env": {
+                    "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;D:/STM32CubeCLT_1.18.0/Ninja/bin;${env:PATH}"
+                }
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build Firmware",
+            "type": "process",
+            "command": "D:/STM32CubeCLT_1.18.0/CMake/bin/cmake.exe",
+            "args": ["--build", "--preset", "Debug", "--parallel"],
+            "options": {
+                "cwd": "${workspaceFolder}/APP",
+                "env": {
+                    "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;D:/STM32CubeCLT_1.18.0/Ninja/bin;${env:PATH}"
+                }
+            },
+            "dependsOn": "Configure Firmware",
+            "dependsOrder": "sequence",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "Clean Firmware",
+            "type": "process",
+            "command": "D:/STM32CubeCLT_1.18.0/CMake/bin/cmake.exe",
+            "args": ["--build", "--preset", "Debug", "--target", "clean"],
+            "options": {
+                "cwd": "${workspaceFolder}/APP",
+                "env": {
+                    "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;D:/STM32CubeCLT_1.18.0/Ninja/bin;${env:PATH}"
+                }
+            },
+            "dependsOn": "Configure Firmware",
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "Flash Firmware (0x08010000)",
+            "detail": "烧录 BMS_RTT_stlink.hex：APP @0x08010000 + Bootloader metadata @0x080FFF00。",
+            "type": "process",
+            "command": "D:/STM32CubeCLT_1.18.0/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe",
+            "args": [
+                "-c", "port=SWD", "mode=UR", "reset=HWrst",
+                "-w", "${workspaceFolder}/APP/build/Debug/BMS_RTT_stlink.hex",
+                "-v", "-rst"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;${env:PATH}"
+                }
+            },
+            "dependsOn": "Build Firmware",
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
             "label": "Configure Bootloader",
             "type": "process",
             "command": "D:/STM32CubeCLT_1.18.0/CMake/bin/cmake.exe",
             "args": ["--preset", "Debug"],
             "options": {
-                "cwd": "${workspaceFolder}/Bootloader_test",
+                "cwd": "${workspaceFolder}/Bootloader",
                 "env": {
                     "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;D:/STM32CubeCLT_1.18.0/Ninja/bin;${env:PATH}"
                 }
@@ -20,7 +84,7 @@
             "command": "D:/STM32CubeCLT_1.18.0/CMake/bin/cmake.exe",
             "args": ["--build", "--preset", "Debug", "--parallel"],
             "options": {
-                "cwd": "${workspaceFolder}/Bootloader_test",
+                "cwd": "${workspaceFolder}/Bootloader",
                 "env": {
                     "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;D:/STM32CubeCLT_1.18.0/Ninja/bin;${env:PATH}"
                 }
@@ -35,7 +99,7 @@
             "command": "D:/STM32CubeCLT_1.18.0/CMake/bin/cmake.exe",
             "args": ["--build", "--preset", "Debug", "--target", "clean"],
             "options": {
-                "cwd": "${workspaceFolder}/Bootloader_test",
+                "cwd": "${workspaceFolder}/Bootloader",
                 "env": {
                     "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;D:/STM32CubeCLT_1.18.0/Ninja/bin;${env:PATH}"
                 }
@@ -50,7 +114,7 @@
             "command": "D:/STM32CubeCLT_1.18.0/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe",
             "args": [
                 "-c", "port=SWD", "mode=UR", "reset=HWrst",
-                "-w", "${workspaceFolder}/Bootloader_test/build/Debug/Bootloader_test.bin",
+                "-w", "${workspaceFolder}/Bootloader/build/Debug/Bootloader.bin",
                 "0x08000000", "-v", "-rst"
             ],
             "options": {
@@ -64,72 +128,9 @@
             "problemMatcher": []
         },
         {
-            "label": "Configure Firmware",
-            "type": "process",
-            "command": "D:/STM32CubeCLT_1.18.0/CMake/bin/cmake.exe",
-            "args": ["--preset", "Debug"],
-            "options": {
-                "cwd": "${workspaceFolder}/APP_test",
-                "env": {
-                    "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;D:/STM32CubeCLT_1.18.0/Ninja/bin;${env:PATH}"
-                }
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Build Firmware",
-            "type": "process",
-            "command": "D:/STM32CubeCLT_1.18.0/CMake/bin/cmake.exe",
-            "args": ["--build", "--preset", "Debug", "--parallel"],
-            "options": {
-                "cwd": "${workspaceFolder}/APP_test",
-                "env": {
-                    "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;D:/STM32CubeCLT_1.18.0/Ninja/bin;${env:PATH}"
-                }
-            },
-            "dependsOn": "Configure Firmware",
-            "dependsOrder": "sequence",
-            "problemMatcher": ["$gcc"]
-        },
-        {
-            "label": "Clean Firmware",
-            "type": "process",
-            "command": "D:/STM32CubeCLT_1.18.0/CMake/bin/cmake.exe",
-            "args": ["--build", "--preset", "Debug", "--target", "clean"],
-            "options": {
-                "cwd": "${workspaceFolder}/APP_test",
-                "env": {
-                    "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;D:/STM32CubeCLT_1.18.0/Ninja/bin;${env:PATH}"
-                }
-            },
-            "dependsOn": "Configure Firmware",
-            "dependsOrder": "sequence",
-            "problemMatcher": []
-        },
-        {
-            "label": "Flash Firmware (0x08010000)",
-            "type": "process",
-            "command": "D:/STM32CubeCLT_1.18.0/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe",
-            "args": [
-                "-c", "port=SWD", "mode=UR", "reset=HWrst",
-                "-w", "${workspaceFolder}/APP_test/build/Debug/APP_test.bin",
-                "0x08010000", "-v", "-rst"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}",
-                "env": {
-                    "PATH": "D:/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin;${env:PATH}"
-                }
-            },
-            "dependsOn": "Build Firmware",
-            "dependsOrder": "sequence",
-            "problemMatcher": []
-        },
-        {
             "label": "Build All",
-            "group": { "kind": "build", "isDefault": true },
             "dependsOn": ["Build Bootloader", "Build Firmware"],
-            "dependsOrder": "parallel",
+            "dependsOrder": "sequence",
             "problemMatcher": []
         },
         {
@@ -142,15 +143,11 @@
             "label": "IAP 串口升级 APP (BMS 协议)",
             "type": "process",
             "command": "python",
-            "args": ["tools/iap_host_bms.py", "--port", "COM7", "--bin", "${workspaceFolder}/APP_test/build/Debug/APP_test.bin"],
-            "options": { "cwd": "${workspaceFolder}" },
-            "problemMatcher": []
-        },
-        {
-            "label": "Open IAP GUI (BMS)",
-            "type": "process",
-            "command": "python",
-            "args": ["tools/iap_host_bms_gui.py"],
+            "args": [
+                "${workspaceFolder}/../Boot_test/tools/flash.py",
+                "--port", "COM6",
+                "--app", "${workspaceFolder}/APP/build/Debug/BMS_RTT.bin"
+            ],
             "options": { "cwd": "${workspaceFolder}" },
             "problemMatcher": []
         },

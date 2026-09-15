@@ -1,7 +1,0 @@
-D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/slave_monitor.c:60:5:slaves_inject	16	static
-D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/slave_monitor.c:81:6:slaves_init	16	static
-D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/slave_monitor.c:93:6:slaves_clear_errors	8	static
-D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/slave_monitor.c:105:6:slaves_read	24	static
-D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/slave_monitor.c:140:6:slaves_check	32	static
-D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/slave_monitor.c:207:9:temp_cal	24	static
-D:/dkt_stm32/DKT/Boot_test/APP_test/Core/Src/slave_monitor.c:215:6:PEC_volt_check	16	static

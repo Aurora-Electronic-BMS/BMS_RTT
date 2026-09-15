@@ -1,0 +1,12 @@
+name: bms_pc
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pyqt=6
+  - pyserial
+  - pyqtgraph
+  - numpy
+  - pandas
+  - pytest

@@ -1,367 +1,333 @@
-# Boot_test - IAP 升级测试工程
+# BMS_RTT
 
-> 面向移植：本文档记录完整的 IAP 机制、通信协议、Flash 分区、Boot/APP 交互逻辑和构建方法，方便将 IAP 功能移植到其他 STM32 工程。
+一套运行在 **STM32F407VGT6** 上的电池管理系统（BMS）应用固件，基于 **RT-Thread 3.1.3** 实时内核，采用多线程模型完成电芯/温度采集、分流器与整车 CAN 数据处理、故障保护、高压继电器时序控制、串口遥测与固件在线升级（IAP）。
 
-## 1. 系统概述
+本工程面向电动车 / 储能电池包场景：通过 LTC6804-1 采集链读取单体电压与 NTC 温度，通过 CAN 接收分流器与整车/充电机报文，通过 GPIO 驱动正/负/预充三路 AIR 继电器，并通过双串口与上位机交互。
 
-独立的 IAP (In-Application Programming) 升级测试工程，包含 Bootloader 和 APP 两个独立子工程。用于验证串口固件升级机制，可作为 BMS_V1.0 Bootloader 的参考实现。
+---
 
-### 核心功能
+## 目录
 
-- **Bootloader**: 串口固件升级、CRC32 校验、向量表验证、安全跳转
-- **APP**: 基于 RT-Thread 的 LED 闪烁 + Boot 触发轮询
-- **上位机工具**: Python CLI/GUI 升级工具 + ST-Link 烧录工具
+- [系统概览](#系统概览)
+- [RT-Thread 线程模型](#rt-thread-线程模型)
+- [硬件与外设映射](#硬件与外设映射)
+- [通信接口](#通信接口)
+- [保护与状态机](#保护与状态机)
+- [Flash 布局与在线升级](#flash-布局与在线升级)
+- [构建](#构建)
+- [烧录与交付物](#烧录与交付物)
+- [上位机](#上位机)
+- [目录结构](#目录结构)
+- [当前配置与已知边界](#当前配置与已知边界)
+- [相关文档](#相关文档)
 
-## 2. 目标硬件
+---
 
-| 项目 | 规格 |
-|------|------|
-| MCU | STM32F407ZGT6 (Cortex-M4F, 64 MHz) |
-| Flash | 1024 KB |
-| RAM | 128 KB SRAM + 64 KB CCM-RAM |
-| 时钟 | HSI 16 MHz → PLL → SYSCLK = 64 MHz |
-| 串口 | UART5: PC12 (TX), PD2 (RX), 115200 8N1 |
-| 调试 | SWD (ST-Link) |
-| USB-TTL | CH340 连接 UART5 (TX/RX 交叉) |
+## 系统概览
 
-## 3. Flash 存储映射
-
-```
-0x08000000 ┌──────────────────────────────┐
-           │   Bootloader (64 KB)         │  Sector 0-3
-0x08010000 ├──────────────────────────────┤
-           │   APP (960 KB)               │  Sector 4-11
-0x080FFF00 ├──────────────────────────────┤
-           │   Metadata (256 B)           │  Sector 11 末尾
-0x08100000 └──────────────────────────────┘
-```
-
-**STM32F407 Sector 大小**:
-
-| Sector | 起始地址 | 大小 |
-|--------|----------|------|
-| 0 | 0x08000000 | 16 KB |
-| 1 | 0x08004000 | 16 KB |
-| 2 | 0x08008000 | 16 KB |
-| 3 | 0x0800C000 | 16 KB |
-| 4 | 0x08010000 | 64 KB |
-| 5 | 0x08020000 | 128 KB |
-| 6 | 0x08040000 | 128 KB |
-| 7 | 0x08060000 | 128 KB |
-| 8 | 0x08080000 | 128 KB |
-| 9 | 0x080A0000 | 128 KB |
-| 10 | 0x080C0000 | 128 KB |
-| 11 | 0x080E0000 | 128 KB |
-
-## 4. 元数据结构
-
-位于 Flash 末尾 256 字节区域 (实际使用 20 字节):
-
-```c
-typedef struct {
-    uint32_t magic;          // 0xB00710AD
-    uint32_t magic_inverse;  // ~0xB00710AD
-    uint32_t image_length;   // APP 镜像长度 (4 字节对齐)
-    uint32_t image_crc32;    // CRC32-IEEE 校验
-    uint32_t crc_inverse;    // ~image_crc32
-} app_metadata_t;            // 共 20 字节
+```mermaid
+flowchart LR
+    Cells["电芯与 NTC"] --> AFE["LTC6804-1 采集链"]
+    AFE -->|"SPI1 (CS=PD7)"| APP["STM32F407VGT6<br/>BMS_RTT"]
+    Shunt["分流器"] -->|"CAN1"| APP
+    VCU["VCU / 使能信号"] -->|"CAN1 + GPIO"| APP
+    Charger["充电机 / CCS"] -->|"CAN2"| APP
+    APP -->|"GPIO"| HV["AIR_POS / AIR_NEG / AIR_PRE"]
+    APP -->|"0x301~0x303"| Bus["BMS 状态报文"]
+    Host["PyQt6 上位机"] <-->|"USART2 / USART3<br/>115200 8N1"| APP
+    Host -->|"B5 4D 升级协议"| Boot["Bootloader"]
+    Boot -->|"校验后跳转"| APP
 ```
 
-**保护机制**: magic 最后写入, 断电时如果 magic 无效, Bootloader 认为 APP 无效, 保持升级模式。
+软件分三层：
 
-## 5. Boot 序列
+| 层 | 内容 |
+| --- | --- |
+| 驱动层 | CubeMX/HAL 生成的 GPIO、CAN1/CAN2、SPI1/SPI3、USART2/USART3；`Hardware/LTC6804-1/`（AFE 驱动）；`Hardware/can-halal/`（双 bxCAN 适配） |
+| 采集与估算层 | `slave_monitor.c`（AFE/温度）、`shunt_monitor.c`（分流器）、`soc_estimation.c`（SOC） |
+| 保护与控制层 | `state_machine.c` + `state_machine_core.c`（状态机与 AIR 时序）、`can_custom.c`（CAN 收发分发）、`telemetry_serial.c`（串口协议） |
 
-```
-上电复位
-  │
-  ├─ 初始化 HAL, GPIO, CRC, UART5
-  │
-  ├─ 检查 RTC 备份寄存器 (BKP0R == 0xB007B007?)
-  │   ├─ 是 → 强制升级模式, 跳到步骤 ③
-  │   └─ 否 → 继续
-  │
-  ├─ 验证 APP 元数据
-  │   ├─ 无效 → 跳到步骤 ③ (等待 HELLO)
-  │   └─ 有效 → 继续
-  │
-  ├─ 等待 500ms 检测 HELLO 握手
-  │   ├─ 收到 HELLO → 进入升级会话 (步骤 ③)
-  │   └─ 未收到 → 跳转到 APP (步骤 ②)
-  │
-  ├─ ② jump_to_app():
-  │   ├─ __disable_irq()
-  │   ├─ HAL 外设反初始化 (UART, CRC, HAL, RCC)
-  │   ├─ 停止 SysTick, 清除所有中断挂起
-  │   ├─ SCB->VTOR = 0x08010000
-  │   ├─ 重置为特权 MSP 模式
-  │   ├─ DSB + ISB 内存屏障
-  │   └─ MSR MSP = APP 栈指针, BX Reset_Handler
-  │
-  └─ ③ 升级会话:
-      ├─ HELLO → ACK, 锁定串口
-      ├─ BEGIN → 擦除 Sector 4-11, 记录 image_length + crc32
-      ├─ DATA  → 逐字节写入 Flash + 读回校验
-      ├─ END   → CRC32 全量校验 + 向量表验证 + 写入元数据
-      └─ RUN   → 跳转到 APP (6 秒超时自动跳转)
-```
+### 与同源裸机版的关系
 
-## 6. APP 返回 Bootloader
+本工程与同源的**裸机版**共用同一套业务源码。17 个业务文件（`bms_io`、`can_custom`、`shunt_monitor`、`slave_monitor`、`soc_estimation`、`state_machine`、`state_machine_core`、`telemetry_serial` 及其头文件）在两版之间**逐字节相同**，差异只在编译期由 `BMS_USE_RTTHREAD` 宏切换：
 
-APP 通过以下步骤触发重新升级:
+- 定义时（本工程）→ 锁为 `rt_mutex`（递归 + 优先级继承），日志格式化走 `rt_vsnprintf`，字符出口为 `rt_hw_console_output()`。
+- 未定义时（裸机版）→ 锁为空实现（主循环单线程），日志走 `vsnprintf` + `HAL_UART_Transmit`。
 
-1. 轮询 UART5 接收 `ENTER_BOOTLOADER` (0x13) 命令帧
-2. 验证帧完整性 (CRC16)
-3. 发送 ACK 响应
-4. 写入 RTC 备份寄存器: `BKP0R = 0xB007B007`, `BKP1R = ~0xB007B007`
-5. 调用 `NVIC_SystemReset()` 软件复位
-6. Bootloader 检测到备份寄存器标志, 清除标志, 进入升级模式
+这样做的目的是让"算法一份、调度两套"，业务逻辑的任何修改在两版之间可机械同步，不存在两份语义漂移的代码。
 
-## 7. 串口升级协议 (B5 4D)
+---
 
-### 帧格式
+## RT-Thread 线程模型
 
-```
-┌──────────┬─────────┬───────┬──────────┬──────────┬─────────────┬──────────┐
-│ MAGIC(2) │ VER(1)  │ CMD(1)│ SEQ(2)   │ LEN(2)   │ DATA(0-260) │ CRC16(2) │
-│ 0xB5 0x4D│ 0x01    │       │ LE       │ LE       │ N bytes     │ LE       │
-└──────────┴─────────┴───────┴──────────┴──────────┴─────────────┴──────────┘
+内核配置：`RT_TICK_PER_SECOND = 1000`（1 ms 节拍），`RT_THREAD_PRIORITY_MAX = 32`。**优先级数值越小越高。**
+
+| 线程 | 优先级 | 栈 | 触发方式 | 职责 |
+| --- | ---: | ---: | --- | --- |
+| `led_blink` | 15 | 512 B | 50 ms 周期 | 翻转 `STATUS_1` 心跳，兼作 RTOS 存活指示 |
+| `bms_can_rx` | 7 | 1024 B | 信号量驱动（ISR 释放） | 排空 CAN 环形缓冲 → 逐帧分发（分流器 / 充电机 / 整车） |
+| `bms_ctrl` | 8 | 1536 B | 50 ms 固定周期 | 状态机每拍推进；电芯采样 / 分流检查 / CAN 状态帧 / 回环自测按 1/3 分频（150 ms）执行 |
+| `bms_telemetry` | 9 | 1280 B | 事件驱动 + 200 ms 兜底 | 串口收帧解析、周期遥测上报 |
+| `main` | 10 | — | — | 初始化外设后调用 `bms_app_start()`，随后让出 CPU |
+
+```mermaid
+flowchart TB
+    subgraph ISR["中断上下文"]
+        CANISR["CAN1_RX0 / CAN2_RX0<br/>ftcan_msg_received_cb()"]
+        UARTISR["USART2 / USART3<br/>RX 中断"]
+    end
+    CANISR -->|"入队 + rt_sem_release"| RING[("can_ring<br/>SPSC 环形缓冲")]
+    CANISR -.->|"唤醒"| CANRX["bms_can_rx (7)"]
+    RING --> CANRX
+    CANRX -->|"can_custom_dispatch()"| MOD["shunt / charge / state_machine"]
+    UARTISR -.->|"唤醒"| TELE["bms_telemetry (9)"]
+    CTRL["bms_ctrl (8)<br/>50ms"] --> AFE["slaves_check()"]
+    CTRL --> SH["shunt_check()"]
+    CTRL --> SM["ts_sm_update()"]
+    CTRL --> CANOUT["can_send_status()"]
 ```
 
-- **CRC16-Modbus**: 多项式 0xA001, 初始值 0xFFFF, 计算范围 = VER 到 DATA
-- **字节序**: 小端 (Little-Endian)
+**关键设计：**
 
-### 命令表
+- **ISR 只入队，不做业务。** CAN 中断回调仅把帧写入 `can_ring`（写载荷 → `__DMB()` → 推进写索引），再 `rt_sem_release()` 唤醒 `bms_can_rx`。分发（可能持锁、可能发串口）全部在线程上下文完成。
+- **CAN1_RX0 与 CAN2_RX0 必须保持同一 NVIC 优先级**，两者互不抢占，多来源入队才等效单生产者。改优先级即破坏该前提。
+- **中断优先级收窄为 5**：`bms_app_start()` 把 CAN1_RX0 / CAN2_RX0 / USART2 / USART3 全部设为抢占优先级 5，避免消息风暴时长时间压住最低优先级的 SysTick（RTOS 节拍）导致调度停摆。
+- **绝不跨阻塞调用持锁**：`HAL_UART_Transmit`、`rt_thread_mdelay` 一律在 `bms_state_lock` 之外执行。
+- **时基**：HAL 的 `uwTick` 由 **TIM7** 提供（1 ms），RTOS 节拍由 **SysTick** 提供。`main()` 在 `SystemClock_Config()` 之后会按实际 `SystemCoreClock` 重装 `SysTick->LOAD`——RT-Thread 的 `rt_hw_board_init()` 在 PLL 配置前按 HSI 频率装过一次，不重装则所有 `rt_thread_mdelay` 会按错误比例缩水。
 
-| CMD | 名称 | 值 | 载荷 | 方向 |
-|-----|------|----|------|------|
-| HELLO | 握手 | 0x30 | 无 | Host → Boot |
-| BEGIN | 开始升级 | 0x31 | image_length(4B) + image_crc32(4B) | Host → Boot |
-| DATA | 写入数据 | 0x32 | offset(4B) + data[1..256] | Host → Boot |
-| END | 校验完成 | 0x33 | 无 | Host → Boot |
-| RUN | 跳转 APP | 0x34 | 无 | Host → Boot |
-| ENTER_BOOT | 返回 Boot | 0x13 | 无 | Host → APP |
+---
 
-### 响应格式
+## 硬件与外设映射
 
-相同帧结构, CMD 替换为:
-- `0x02` = ACK (成功)
-- `0x03` = NACK (失败)
+| 外设 | 引脚 | 用途 |
+| --- | --- | --- |
+| CAN1 | PA11 / PA12 | 分流器（`0x52x`）、整车 `0x700` / `0x188` |
+| CAN2 | PB12 / PB13 | BMS 状态输出、充电机 CCS 扩展帧 |
+| SPI1 | SCK/MISO/MOSI + **CS = PD7** | LTC6804-1 采集链 |
+| USART2 | PA2 / PA3 | 上位机 / 调试主口 |
+| USART3 | PB10 / PB11 | 第二上位机口 |
 
-响应载荷 (6 字节): `echo_seq(2B) + original_cmd(1B) + result_code(1B) + expected_next_seq(2B)`
+### 数字输入输出
 
-### 结果码
+| 信号 | 引脚 | 方向 | 说明 |
+| --- | --- | --- | --- |
+| `POWER_UP` | PE2 | 输入 | 上电/使能 |
+| `CHARGE_ENABLE` | PE3 | 输入 | 充电使能 |
+| `SDC_VOLTAGE` | PE4 | 输入 | SDC 联锁（闭合判定） |
+| `POS_AIR` / `NEG_AIR` / `PRECHARGE` | PD11 / PD9 / PB15 | 输出 | 三路继电器控制 |
+| `BMS_ERROR` / `BMS_NERROR` | PE5 / PB0 | 输出 | 硬线故障指示 |
+| `HV_ACTIVE` / `HV_MISMATCH` | PE10 / PC4 | 输出 | 高压状态 |
+| `STATUS_1`~`STATUS_6` | PC8 / PA7 / PC6 / PA6 / PD14 / PA5 | 输出 | 状态指示（见下） |
 
-| 码 | 含义 |
-|----|------|
-| 0x00 | OK |
-| 0x01 | CRC 错误 |
-| 0x02 | 长度错误 |
-| 0x03 | 命令错误 |
-| 0x04 | 状态错误 |
-| 0x05 | 序列号错误 |
-| 0x06 | Flash 写入错误 |
-| 0x07 | 镜像 CRC 不匹配 |
-| 0x08 | 向量表无效 |
+**状态指示约定**（两版一致）：
 
-### 序列号机制
+| LED | 含义 |
+| --- | --- |
+| `STATUS_1` | RTOS 心跳（`led_blink` 线程 50 ms 翻转） |
+| `STATUS_2` | 本拍控制循环超支（未超支熄灭） |
+| `STATUS_3` | 状态机非 `INACTIVE` |
+| `STATUS_4` | AFE 通信错误（PEC 校验失败且有放电电流） |
+| `STATUS_5` | 启动时 CAN 初始化失败 |
+| `STATUS_6` | 存在故障 |
 
-- Host 从 0xFFFF 开始, `_next_seq()` 返回 0 作为首个序列号
-- Boot 跟踪期望序列号, NACK 帧中返回期望的下一个序列号用于自动重同步
+---
 
-## 8. APP 配置要点
+## 通信接口
 
-### 链接脚本
+### CAN 报文
 
-APP 的链接脚本必须将 FLASH 起始地址设为 `0x08010000`:
+| 方向 | 总线 | 标识符 | 用途 |
+| --- | --- | --- | --- |
+| 输入 | CAN1 | `0x521`~`0x528` | 分流器：电流、电压、母排温度、功率、计数器 |
+| 输入 | CAN1 | `0x188` | VCU 驱动模式（超时 2 s 失效） |
+| 输入 | CAN1 | `0x700` | 充电命令识别 |
+| 输入 | CAN2 | `0x18FF50E5` | 充电机 CCS 扩展帧 |
+| 输出 | CAN2 | `0x301` / `0x302` / `0x303` | BMS 状态 1/2/3 |
+| 输出 | CAN2 | `0x1806E5F4` | 充电电压/电流请求 |
 
-```ld
-MEMORY
-{
-    FLASH (rx)  : ORIGIN = 0x08010000, LENGTH = 960K
-    RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 128K
-    CCMRAM (rwx): ORIGIN = 0x10000000, LENGTH = 64K
-}
+报文定义以 `DBC/BMS.dbc` 与 `DBC/IVT.dbc` 为权威。
+
+### 串口协议
+
+`USART2` 与 `USART3` 均为 **115200 8N1**，两个口都能跑完整协议（含 `0x13` 重入升级）。帧格式：
+
+```text
+B5 4D | version:u8 | type:u8 | sequence:u16 | payload_length:u16 | payload | crc16_modbus:u16
 ```
 
-### APP main() 必须包含
+- 第一个收到合法帧的串口成为**活动链路**；上位机每 200 ms 发心跳，APP 在链路有效时以 200 ms 周期发布完整遥测；心跳超时 1 s 后释放链路。
+- 遥测包含状态、错误码、控制模式、AIR/SDC/HV 状态、包/车端电压、电流、SOC、温度极值，以及电芯与温度数组。
+- 命令包括：目标状态、手动 AIR、心跳、清故障、进入 Bootloader；均回 ACK。
+- 上位机未连接时（无活动链路），APP 每 1 s 打印一行 `[ST]` 文本状态，方便纯串口逻辑验证。
 
-```c
-// 1. 重定位中断向量表
-SCB->VTOR = FLASH_BASE | 0x10000U;  // 0x08010000
+---
 
-// 2. 设置中断优先级分组
-HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+## 保护与状态机
 
-// 3. 重新使能中断 (Bootloader 跳转前已关闭)
-__enable_irq();
+`state_machine.c` 是安全控制中心，维护当前状态、目标状态、故障位图 `ts_error_kind`，以及三路 AIR 输出。每类故障先经 `ErrorMonitor` 去抖（典型 500 ms / 1000 ms）确认后再汇入状态机；`ERROR_LATCH_ENABLE = 1` 时已确认故障会锁存，直至收到清错命令或复位重评。
+
+| 状态 | 目的 | AIR_POS | AIR_NEG | AIR_PRE |
+| --- | --- | ---: | ---: | ---: |
+| `TS_INACTIVE` | 未激活 | 断 | 断 | 断 |
+| `TS_PRECHARGE` | 预充 | 断 | 合 | 合 |
+| `TS_PRE_HOLD` | 预充稳定确认 | 合 | 合 | 合 |
+| `TS_ACTIVE` | 待驶 / 放电 | 合 | 合 | 断 |
+| `TS_CHARGE` | 充电运行 | 合 | 合 | 断 |
+| `TS_DISCHARGE` | 断开后等待放电 | 断 | 断 | 断 |
+| `TS_ERROR` | 故障安全态 | 断 | 断 | 断 |
+
+```mermaid
+stateDiagram-v2
+    [*] --> INACTIVE
+    INACTIVE --> PRECHARGE: 目标 ACTIVE/CHARGE 且 SDC 闭合
+    PRECHARGE --> PRE_HOLD: 车端电压 > 95% 包电压
+    PRE_HOLD --> ACTIVE: 目标 ACTIVE 且电压确认
+    PRE_HOLD --> CHARGE: 目标 CHARGE 且车端电压高于包端
+    ACTIVE --> DISCHARGE: 目标 INACTIVE 或 SDC 断开
+    CHARGE --> DISCHARGE: 目标 INACTIVE 或 SDC 断开
+    DISCHARGE --> INACTIVE: 放电计时结束
+    PRECHARGE --> ERROR: 预充超时
+    PRE_HOLD --> ERROR: 预充确认失败
+    Any --> ERROR: 已确认的故障源
+    ERROR --> INACTIVE: 故障清除后稳定
 ```
 
-### SOC 估算（OCV 查表 + 安时积分）
+保护阈值当前为编译期宏，位于 `slave_monitor.h`（过压 4200 mV / 欠压 3200 mV / 过温 35 ℃）、`shunt_monitor.h` 与 `state_machine.h`。
 
-`Core/Src/soc_estimation.c`：静置（|电流| < 200mA 持续 100s）时用最低单体电压
-`min_voltage` 查 OCV-SOC 表定基准；有电流时对分流器累计电量
-`shunt_data.current_counter` 做安时积分。符号约定与分流器一致（**充电为正、放电为负**），
-输出 `current_soc` 钳位到 [0,100]。
+> `state_machine_core.c` 是与 HAL/RTOS 无关的**纯决策内核**（只依赖 `<stdint.h>`/`<stdbool.h>`），因此可在宿主机上独立编译测试；`state_machine.c` 只负责真值快照、加锁与锁外执行动作。
 
-接入点（控制线程 150ms 重活分支，持 `bms_state_lock`）：`bms_app_start()` 调 `soc_init()`；
-heavy 分支 `shunt_check()` 之后调 `soc_update()`。消费端三处：CAN STATUS1 的 `data1[1]`、
-遥测固定区中的 1 字节、串口 `[ST] ... soc=`。
+---
 
-> 注意：BMS_V1.0 裸机版同名模块原先**零调用**，且算法有方向/符号缺陷（只认充电方向、
-> 积分符号反、无钳位）。已同步修正算法（仍未接入其主循环）。两版算法由
-> `tools/soc_test` 用同一套断言跑真实的 `soc_estimation.c` 验证。
+## Flash 布局与在线升级
 
-## 9. 构建方法
+| 区域 | 地址 | 用途 |
+| --- | --- | --- |
+| Bootloader | `0x08000000`..`0x0800FFFF` | 启动校验与串口升级服务 |
+| APP 镜像 | `0x08010000`..`0x080FFEFF` | 应用固件（本工程） |
+| APP 元数据 | `0x080FFF00`..`0x080FFFFF` | 魔数、镜像长度、CRC32 及反码 |
 
-### 环境要求
+**升级流程**：APP 收到 `0x13` 进入 Bootloader 命令 → 写 RTC 备份寄存器标志 + 软件复位 → Bootloader 检测到标志后忽略有效 APP，等待上位机 `HELLO` → `BEGIN`(length, CRC32) → 分包 `DATA` → `END` 校验整包 CRC32、初始栈地址与复位向量 → 写入元数据 → `RUN` 跳转。
 
-- CMake >= 3.22
-- Ninja
-- arm-none-eabi-gcc
-- Python 3 + pyserial (上位机工具)
+只有 `END` 阶段全部校验通过才写入有效元数据。因此升级中途掉电后，Bootloader 不会启动不完整的 APP，而是停留在升级服务中等待合法握手。
 
-### 构建 Bootloader
+> **元数据是硬门槛**：Bootloader 在 `0x080FFF00` 处校验 `app_metadata_t{magic=0xB00710AD, ~magic, image_length, image_crc32, ~image_crc32}`，且 `crc32_ieee(0x08010000, image_length)` 必须匹配。**CubeIDE 的 Run/下载按钮只烧 ELF，不含元数据**，直接烧录会通不过校验、APP 一个字节都不执行（串口完全静默）。请烧 `*_stlink.hex`，或用 `tools/package_app_image.py` 给裸 ELF 补元数据。
 
-```bash
-cd Bootloader_test
+---
+
+## 构建
+
+**工具链**：`arm-none-eabi-gcc` + CMake (≥3.22) + Ninja。APP 与 Bootloader 是**两个独立的 CMake 工程**，仓库根目录没有总 `CMakeLists.txt`。
+
+```sh
+# 应用固件
+cd APP
 cmake --preset Debug
-cmake --build --preset Debug
-```
+cmake --build --preset Debug --parallel
 
-输出: `build/Debug/Bootloader_test.elf` / `Bootloader_test.bin`
-
-### 构建 APP
-
-```bash
-cd APP_test
+# Bootloader
+cd ../Bootloader
 cmake --preset Debug
-cmake --build --preset Debug
+cmake --build --preset Debug --parallel
 ```
 
-输出: `build/Debug/APP_test.elf` / `APP_test.bin`
+Windows 下若使用 STM32CubeCLT，需把 `GNU-tools-for-STM32/bin` 与 `Ninja/bin` 加进 `PATH`（`.vscode/tasks.json` 已配好直接可用的任务）。
 
-### 烧录方式
+### 编译选项
 
-**方式 1: ST-Link (首次烧录)**
-```bash
-# 先烧 Bootloader (0x08000000)
-# 再烧 APP (0x08010000)
-# 使用 STM32CubeIDE 或 STM32_Programmer_CLI
+| 选项 | 默认 | 说明 |
+| --- | --- | --- |
+| `BMS_AFE_STUB` | `OFF` | `OFF` = 编译真实 LTC6804 驱动 `Hardware/LTC6804-1/LTC68041.c`；`ON` = 用 `Core/Src/LTC68041_stub.c` 桩件（每芯 3700 mV）在无 AFE 的板上跑逻辑 |
+| `BMS_TEST_HOOKS` | `OFF` | `ON` = 编入台架自测/故障注入钩子（CAN 回环自测、串口 `0x20`~`0x23` 命令、`bms_io_inject`/`shunt_inject`/`slaves_inject`/`charge_inject`）。量产保持 `OFF` |
+
+> CMake 的 `option()` 改不动已有的 `CMakeCache.txt`。要切换开关必须显式传入，例如
+> `cmake --preset Debug -DBMS_AFE_STUB=OFF`，否则会沿用旧缓存值（表现为产物字节完全不变，是个很隐蔽的坑）。
+> 建议台架构建另开目录：`cmake --preset Debug -B build/Debug-hooks -DBMS_TEST_HOOKS=ON`。
+
+---
+
+## 烧录与交付物
+
+`firmware_artifacts` 目标会依次产出：
+
+| 文件 | 用途 |
+| --- | --- |
+| `BMS_RTT.elf` | 调试符号 / GDB |
+| `BMS_RTT.bin` | **串口升级**（仅 APP，不含元数据） |
+| `BMS_RTT_stlink.hex` | **ST-Link 直接烧录**（APP + 元数据） |
+
+```sh
+# ST-Link 烧 Bootloader（只在首次或更新引导时）
+STM32_Programmer_CLI -c port=SWD mode=UR -w Bootloader.bin 0x08000000 -v -rst
+
+# ST-Link 烧 APP（含元数据）
+STM32_Programmer_CLI -c port=SWD mode=UR -w BMS_RTT_stlink.hex -v -rst
 ```
 
-**方式 2: 串口升级 (后续更新)**
-```bash
-python tools/iap_host_bms.py <COM端口> <APP_test.bin路径>
+串口 IAP 升级由上位机的"固件升级"功能完成：先向 APP 发送 `0x13` 进入 Bootloader，再用 `BMS_RTT.bin` 走 HELLO/BEGIN/DATA/END/RUN 流程。
+
+> `mode=UR` 每次连接都会复位目标；只想读寄存器/内存观察运行状态时用 `mode=hotplug`（不复位）。
+
+---
+
+## 上位机
+
+`HostComputer/` 是基于 **PyQt6** 的上位机：接收二进制遥测，显示全部单体槽位（偶数分组第 12 槽为空位，显示 `N/A`）与温度，记录 CSV 日志，发送受保护的状态/继电器命令，并支持一键固件升级。
+
+```sh
+conda env create -f HostComputer/environment.yml
+conda activate bms_pc
+
+python -m bms_host              # 真实串口
+python -m bms_host --simulate   # 模拟遥测
 ```
 
-## 10. 上位机工具
+协议实现位于 `HostComputer/bms_host/protocol.py`，串口与升级流程位于 `serial_worker.py`。继电器手动控制模块解锁密码为 `sztu`。
 
-| 工具 | 协议 | 用途 |
-|------|------|------|
-| `iap_host_bms.py` | B5 4D | CLI 升级工具 (当前版本) |
-| `iap_host_bms_gui.py` | B5 4D | Tkinter GUI 升级 + ST-Link 烧录 |
-| `flash.py` / `flash.bat` | B5 4D + OpenOCD | 组合工具 (ST-Link 烧 Bootloader, IAP 烧 APP) |
-| `write_metadata.py` | STM32_Programmer | 独立元数据写入工具 |
+---
 
-## 11. 调试配置
+## 目录结构
 
-### STM32CubeIDE 调试 APP
-
-1. Debug 配置中设置向量表偏移: `SCB->VTOR = 0x08010000`
-2. 加载 `Bootloader_test.elf` 符号文件以解析 Bootloader 地址空间
-3. 断点可能显示在 `0x080012E8` 地址, 这是正常的 (加载 Bootloader ELF 即可解决)
-
-### 调试注意事项
-
-- APP 调试时, Bootloader 必须已烧录且有效, 否则无法启动
-- 如果不加载 Bootloader 符号, 断点在 Bootloader 空间会显示无调试信息
-- RT-Thread 的 SysTick 中断在 APP 中运行, HAL 使用 TIM7 作为时基
-
-## 12. 移植指南
-
-### 移植到其他 STM32 芯片
-
-1. **修改 Flash 扇区布局**: 不同芯片的 Sector 大小和数量不同
-2. **更新链接脚本**: Bootloader 和 APP 的 FLASH 起始地址和大小
-3. **调整元数据位置**: 确保在 Flash 末尾, 不与其他数据冲突
-4. **修改 UART 引脚**: 更新 GPIO 和 UART 外设配置
-5. **验证 CRC 算法**: 确保硬件 CRC 或软件 CRC 与上位机一致
-6. **调整 RTC 备份寄存器**: 不同芯片的备份寄存器数量和地址不同
-
-### 单独移植各组件
-
-| 组件 | 依赖 | 移植步骤 |
-|------|------|----------|
-| Bootloader 主逻辑 | Flash, CRC, UART | 修改 Flash 扇区地址, 调整 HAL 驱动 |
-| 跳转机制 | NVIC, SCB | 检查目标芯片的 VTOR/SCB 寄存器 |
-| 帧协议解析 | 无 | 直接复制, 修改帧大小限制 |
-| 元数据校验 | Flash | 修改元数据存储地址 |
-| APP 触发返回 | RTC BKP | 确认目标芯片的备份寄存器机制 |
-| 上位机工具 | pyserial | 修改默认串口和波特率 |
-
-### 关键注意事项
-
-- **Flash 编程方式**: 当前使用逐字节编程 (`FLASH_TYPEPROGRAM_BYTE`) + 读回校验, 兼容性最好
-- **Sector 擦除顺序**: BEGIN 时擦除 Sector 4-11, 注意不同芯片的扇区大小
-- **向量表偏移**: APP 必须设置 `SCB->VTOR`, 否则中断会跳转到错误地址
-- **中断使能**: APP 启动后必须调用 `__enable_irq()`, 否则所有中断不工作
-- **SysTick 冲突**: 如果 APP 使用 RTOS, SysTick 归 RTOS 管理, HAL 需要其他时基
-- **断电保护**: 元数据最后写入, 确保升级过程中断电不会导致无效 APP 被执行
-- **序列号同步**: NACK 帧中的 `expected_next_seq` 用于 Host 自动重同步, 无需重发 HELLO
-
-### 移植到 FDCAN 芯片 (如 STM32H7)
-
-如果需要将升级通道从 UART 改为 CAN-FD:
-1. 将帧协议适配到 CAN-FD 帧 (最大 64 字节载荷)
-2. 使用 CAN-FD 的 BRS (Bit Rate Switch) 提高速度
-3. 调整滤波器配置
-4. 注意: 当前协议的 256 字节 DATA 载荷需要拆分为多个 CAN-FD 帧
-
-## 13. 文件结构
-
-```
-Boot_test/
-├── Bootloader_test/                 # Bootloader 子工程
-│   ├── CMakeLists.txt
-│   ├── CMakePresets.json
-│   ├── STM32F407ZGTX_FLASH.ld       # 链接脚本 (@ 0x08000000)
+```text
+BMS_RTT/
+├── APP/                             应用固件（CMake 工程）
 │   ├── Core/
-│   │   ├── Inc/                     # main.h, gpio.h, usart.h, crc.h
-│   │   └── Src/
-│   │       ├── main.c               # ★ 完整 Bootloader (980 行)
-│   │       ├── gpio.c, usart.c, crc.c
-│   │       └── stm32f4xx_it.c
-│   ├── Drivers/                     # STM32 HAL + CMSIS
-│   └── cmake/stm32cubemx/          # CubeMX 自动生成的构建规则
-│
-├── APP_test/                        # APP 子工程
+│   │   ├── Src/                     main.c, bms_app.c, rt_app.c, 业务模块…
+│   │   └── Inc/                     对应头文件
+│   ├── Hardware/
+│   │   ├── LTC6804-1/               AFE 驱动（真驱动）
+│   │   └── can-halal/               双 bxCAN 适配层
+│   ├── Middlewares/Third_Party/RealThread_RTOS_RT-Thread/   RT-Thread 内核
+│   ├── RT-Thread/rtconfig.h         内核裁剪配置
+│   ├── cmake/                       工具链 + CubeMX 生成的构建脚本
 │   ├── CMakeLists.txt
-│   ├── CMakePresets.json
-│   ├── STM32F407ZGTX_FLASH.ld       # 链接脚本 (@ 0x08010000)
-│   ├── Core/
-│   │   ├── Inc/
-│   │   │   ├── main.h               # LED0=PE3, LED1=PE4
-│   │   │   └── RTE_Components.h     # RT-Thread 组件使能
-│   │   └── Src/
-│   │       ├── main.c               # ★ APP 逻辑: LED + Boot 触发
-│   │       └── stm32f4xx_hal_timebase_tim.c  # TIM7 HAL 时基
-│   ├── Middlewares/Third_Party/RealThread_RTOS_RT-Thread/  # RT-Thread 3.1.3
-│   └── Drivers/
-│
-├── tools/                           # 上位机工具
-│   ├── iap_host_bms.py             # CLI 升级工具
-│   ├── iap_host_bms_gui.py         # GUI 升级工具
-│   ├── flash.py / flash.bat        # 组合烧录工具
-│   ├── write_metadata.py           # 元数据写入
-│   ├── bms_logic_test.py           # 状态机端到端逻辑验证
-│   ├── bms_telemetry_test.py       # 遥测协议验证
-│   ├── bms_fault_inject.py         # 故障注入
-│   ├── bms_soak.py                 # 长跑/浸泡测试
-│   ├── fsm_test/                   # 状态机纯内核宿主机单测
-│   ├── ring_test/                  # SPSC 环形缓冲宿主机并发测试
-│   └── soc_test/                   # SOC 估算宿主机单测 (RT/裸机两版同跑)
-│
-├── CubeIDE配置与调试IAP指南.md       # CubeIDE IAP 配置指南
-├── IAP升级从零配置指南.md            # 从零搭建 IAP 的完整教程
-└── doces/                           # HTML 文档页面
+│   └── CMakePresets.json
+├── Bootloader/                      IAP 引导（独立 CMake 工程）
+├── HostComputer/                    PyQt6 上位机
+├── DBC/                             BMS.dbc / IVT.dbc
+├── docs/                            构建与 ST-Link 下载说明
+├── tools/package_app_image.py       打包 elf/bin/metadata/stlink.hex
+├── SYSTEM_FRAMEWORK.md              系统框架详述
+└── README.md
 ```
+
+---
+
+## 当前配置与已知边界
+
+- **AFE 级联数** `TOTAL_IC = 12`（`slave_monitor.h`）。12 IC × 12 通道 − 6 个空位 = **138 个有效单体**；偶数编号 IC 的第 12 通道无电芯。变更硬件串数时需同步更新 `slave_monitor.h` 与遥测容量。
+- **CAN 模式**在 `APP/Core/Src/can.c` 与 `.ioc` 中为 `CAN_MODE_NORMAL`。若总线上没有第二个节点，回环自测与分流器数据会失效（收不到 ACK → TEC 累积）；需要自测时改回 `CAN_MODE_LOOPBACK`，两处（源码 + `.ioc`）都要改，改完必须**重新 build + flash**。
+- **AFE 真驱动**要求 `LTC6804_initialize()` 被调用（`bms_app_start()` 中已含）。真驱动下若板上未装 LTC6804，电芯读数会为 0，从而触发欠压保护。
+- 保护阈值目前**只有编译期宏**，协议中暂无在线读写命令。
+- `SYSTEM_FRAMEWORK.md` 描述的是系统框架，其中部分细节随版本演进可能滞后，**以源码为准**。
+
+---
+
+## 相关文档
+
+| 文档 | 内容 |
+| --- | --- |
+| `SYSTEM_FRAMEWORK.md` | 系统分层、数据闭环、接口契约的完整说明 |
+| `Bootloader/README.md` | 升级协议帧格式与命令序列 |
+| `HostComputer/README.md` | 上位机环境、运行与打包 |
+| `docs/Windows_VSCode_CMake_Toolchain.md` | Windows + VS Code + CMake 构建环境 |
+| `docs/CubeIDE_STLink_APP_Download.md` | CubeIDE 下用 ST-Link 下载 APP 的注意事项 |

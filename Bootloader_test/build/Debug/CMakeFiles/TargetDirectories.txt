@@ -1,6 +1,0 @@
-D:/dkt_stm32/DKT/Boot_test/Bootloader_test/build/Debug/CMakeFiles/Bootloader_test.dir
-D:/dkt_stm32/DKT/Boot_test/Bootloader_test/build/Debug/CMakeFiles/edit_cache.dir
-D:/dkt_stm32/DKT/Boot_test/Bootloader_test/build/Debug/CMakeFiles/rebuild_cache.dir
-D:/dkt_stm32/DKT/Boot_test/Bootloader_test/build/Debug/cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir
-D:/dkt_stm32/DKT/Boot_test/Bootloader_test/build/Debug/cmake/stm32cubemx/CMakeFiles/edit_cache.dir
-D:/dkt_stm32/DKT/Boot_test/Bootloader_test/build/Debug/cmake/stm32cubemx/CMakeFiles/rebuild_cache.dir
