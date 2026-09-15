@@ -1,0 +1,3 @@
+../Core/Src/soc_estimation.c:25:6:soc_init	1
+../Core/Src/soc_estimation.c:31:6:soc_update	5
+../Core/Src/soc_estimation.c:55:14:ocv_soc_update	5

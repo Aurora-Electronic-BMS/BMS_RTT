@@ -1,0 +1,5 @@
+../Core/Src/slave_monitor.c:33:6:slaves_init	2
+../Core/Src/slave_monitor.c:45:6:slaves_read	1
+../Core/Src/slave_monitor.c:61:6:slaves_check	22
+../Core/Src/slave_monitor.c:133:9:temp_cal	1
+../Core/Src/slave_monitor.c:139:6:PEC_volt_check	4

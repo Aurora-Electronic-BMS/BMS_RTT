@@ -1,0 +1,94 @@
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors and local tooling
+.idea/
+.codex/
+.agents/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# STM32Cube and IDE-local metadata
+.mxproject
+.settings/
+.project
+.cproject
+*.launch
+
+# CMake and firmware build directories
+build/
+cmake-build-*/
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Compiler, linker, and firmware outputs
+*.o
+*.obj
+*.d
+*.dep
+*.su
+*.a
+*.lib
+*.elf
+*.axf
+*.hex
+*.bin
+*.map
+*.lst
+*.dis
+*.siz
+
+# Python caches, environments, and test output
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+
+# Logs, caches, and temporary files
+logs/
+*.log
+.cache/
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+
+# Local environment and secrets (keep templates)
+.env
+.env.*
+!.env.example
+
+# Code-navigation databases
+tags
+TAGS
+cscope.*
+DUAL_CAN_SUPPORT.md

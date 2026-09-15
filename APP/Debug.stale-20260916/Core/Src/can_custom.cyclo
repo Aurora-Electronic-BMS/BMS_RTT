@@ -1,0 +1,5 @@
+../Core/Src/can_custom.c:15:19:can_init	7
+../Core/Src/can_custom.c:43:19:can_send_status	5
+../Core/Src/can_custom.c:78:19:can_send_error_state	1
+../Core/Src/can_custom.c:84:19:can_send_charge_req	1
+../Core/Src/can_custom.c:92:6:ftcan_msg_received_cb	5
