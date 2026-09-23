@@ -20,6 +20,7 @@
 "./Core/Src/system_stm32f4xx.o"
 "./Core/Src/telemetry_serial.o"
 "./Core/Src/usart.o"
+"./Core/Src/bms_config.o"
 "./Core/Startup/startup_stm32f407xx.o"
 "./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.o"
 "./Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_can.o"

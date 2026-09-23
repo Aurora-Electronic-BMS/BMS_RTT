@@ -15,13 +15,10 @@
 #include "stm32f4xx_hal.h"
 #include "state_machine_core.h"
 
-/* 充电请求帧（CAN_ID_CHARGE_REQ）里带的上限 */
-#define MAX_CHARGE_VOLT 5800            //0.1V
-#define MAX_CHARGE_CURR 30              //0.1A
+/* 充电请求上限与全部时间阈值都不再编译期固定：见 bms_config（0x16 可改、掉电保持）。 */
 
 /* 故障去抖监视器：确认后是否锁存（须显式清错） */
 #define ERROR_LATCH_ENABLE 1
-#define ERROR_MONITOR_INIT(delay_value, latch_value) { .delay_ms = (delay_value), .latch = (latch_value) }
 
 /* 全局状态机的"唯一权威"副本：跨模块（遥测/CAN/bms_io）读它 */
 typedef struct {

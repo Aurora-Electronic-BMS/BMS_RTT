@@ -1,126 +1,192 @@
 /* ==========================================================================
- * soc_estimation.c —— SOC 估算：OCV 查表 + 安时积分
+ * soc_estimation.c —— SOC 估算（BMS_V1.0 610b476 新版算法）
  *
- * 调用约定：soc_update() 读 shunt_data / min_voltage 并写 current_soc，由控制
- * 线程在 bms_state_lock() 内调用（current_soc 会被遥测线程读取）。
+ * 调用约定：soc_update() 读 shunt_data / 状态机 / 行车模式并写 current_soc，
+ * 由控制线程在 bms_state_lock() 内调用（current_soc 会被遥测线程读取）。
  *
- * 相对 BMS_V1.0 原实现的修正（原版零调用，缺陷从未暴露）：
- *   1. 判静置原来写 current >= 阈值，只认充电方向；放电（负电流）被当成静置，
- *      安时积分根本不跑。→ 改为对电流取绝对值比较。
- *   2. 积分符号原来写成 基准 - ΔQ，与"充电为正"的约定相反，充电时 SOC 反降。
- *      → 改为 基准 + ΔQ。
- *   3. 增加 [0,100] 钳位，避免积分漂出区间。
- *   4. soc_init() 原来置 current_existing=1，导致第一段电流的基准点抓不到。
- *      → 改为 0。
- *   5. 原来只在开机后首次（last_current_time==0）用 OCV 定初值，带载上电会从
- *      0 开始积分且长期贴地。→ 改为延迟播种：等 min_voltage 有效后用 OCV 定
- *      初值，之后才进入积分/静置校准逻辑。
+ * 符号约定（与 shunt_monitor 一致）：**充电为正、放电为负**，故积分是
+ * integrated_soc += ΔQ/Q_full*100，充电时 SOC 上升。
+ *
+ * flash：SOC 与配置共用 bms_config 的 Sector 10 追加记录区。soc_save() 只在
+ *   SOC 变化 ≥1%、到 0/100%、或"退出行车模式且断开高压"时触发，避免高频擦写。
+ *   写满一个扇区后由 soc_storage_save() 整体擦除重写。该擦除在 STM32F407VG
+ *   （单 bank）上会冻结整个 flash bank 秒级——所有从 flash 取指的代码（含中断）
+ *   一起停，加不加 bms_state_lock 都一样。故这种整擦只在 INACTIVE 且三路 AIR
+ *   全开的安全窗口里执行；否则挂起，等 soc_update() 下一个安全拍补写。
+ *   普通追加写（非擦除）仍照常在任意时刻落盘。
  * ========================================================================== */
 #include "soc_estimation.h"
-#include "shunt_monitor.h"
-#include "slave_monitor.h"
-#include "stm32f4xx_hal.h"
 
-#include <stdint.h>
+#include <math.h>
+#include <stdbool.h>
 #include <stddef.h>
 
-static float ocv_soc_update(uint16_t ocv);
+#include "bms_config.h"
+#include "can_custom.h"
+#include "shunt_monitor.h"
+#include "state_machine.h"
 
-static const ocv_soc OCV_SOC_TABLE[] = {
+#define SOC_PRECISION_SCALE          100.0f
+#define SOC_PERSIST_INTERVAL_PERCENT 1.0f
+#define SOC_MILLI_PERCENT_MAX        10000U
+
+float current_soc;
+volatile uint8_t charge_finish = 0;
+
+static float last_current_counter;
+static float persisted_soc;
+static float integrated_soc;
+static uint8_t previous_drive_mode;
+static TSState previous_ts_state;
+static bool soc_save_pending;   /* 因不在安全窗口而被推迟的整擦落盘 */
+
+static const ocv_soc E07_OCV_SOC_TABLE[] = {
     {3000, 0.00f},  {3554, 10.00f},  {3721, 20.00f},
     {3762, 30.00f}, {3778, 40.00f},  {3796, 50.00f},
     {3843, 60.00f}, {3921, 70.00f},  {3981, 80.00f},
     {4085, 90.00f}, {4195, 100.00f}
 };
 
-float    current_soc;
-int      current_existing;
-uint32_t last_current_time;
-float    before_soc;
-float    before_mAs;
+static const ocv_soc OCV_SOC_TABLE[] = {
+    {3689, 8.59f},  {3727, 18.75f},  {3775, 28.91f},
+    {3809, 39.06f}, {3852, 49.22f},  {3923, 59.38f},
+    {4020, 69.53f}, {4123, 79.69f},  {4229, 89.84f},
+    {4341, 100.00f}
+};
 
-static int soc_initialized;            /* 是否已用 min_voltage 播种过初值 */
-
-/* 有电流：充电为正、放电为负，故对电流取绝对值与阈值比较 */
-static int soc_has_current(int32_t current) {
-    return (current >= NO_CURRENT_THRESHOLD) || (current <= -NO_CURRENT_THRESHOLD);
+static float clamp_soc(float soc)
+{
+    if (soc < 0.0f) {
+        return 0.0f;
+    }
+    if (soc > 100.0f) {
+        return 100.0f;
+    }
+    return soc;
 }
 
-void soc_init(void) {
-    current_soc       = 0.0f;
-    before_soc        = 0.0f;
-    before_mAs        = 0.0f;
-    last_current_time = 0U;
-    current_existing  = 0;
-    soc_initialized   = 0;
+// 将SOC四舍五入到小数点后两位
+static float round_soc(float soc)
+{
+    return roundf(clamp_soc(soc) * SOC_PRECISION_SCALE) / SOC_PRECISION_SCALE;
 }
 
-void soc_update(void) {
-    uint32_t now         = HAL_GetTick();
-    int      has_current = soc_has_current(shunt_data.current);
+// 将SOC转换为整数用于存入flash
+static uint32_t soc_to_int(float soc)
+{
+    return (uint32_t)lroundf(round_soc(soc) * SOC_PRECISION_SCALE);
+}
 
-    /* 起点：等 min_voltage 有效后用 OCV 表定初值。
-     * 否则带载上电会从 0 开始积分，读数长期贴地。 */
-    if(!soc_initialized) {
-        if(min_voltage == 0U || min_voltage == 0xFFFFU) {
-            return;                    /* 单体电压还没到，先不出数 */
+/* 整扇区擦除会冻结整个 flash bank（F407VG 单 bank），行车中执行会让 CAN/UART
+ * 丢帧。故只在 INACTIVE 且三路 AIR 全开时才允许这种整擦。 */
+static bool soc_erase_window_safe(void)
+{
+    return ts_state.current_state == TS_INACTIVE && ts_sm_get_air_bits() == 0U;
+}
+
+static bool soc_save(void)
+{
+    const uint32_t soc_milli_percent = soc_to_int(current_soc);
+
+    if (soc_storage_would_erase() && !soc_erase_window_safe()) {
+        soc_save_pending = true;    /* 延后：等进安全窗口再由 soc_update() 补写 */
+        return false;
+    }
+    if (!soc_storage_save(soc_milli_percent)) {
+        return false;
+    }
+    soc_save_pending = false;
+    persisted_soc = (float)soc_milli_percent / SOC_PRECISION_SCALE;
+    return true;
+}
+
+static float ocv_to_soc(uint16_t ocv_mV)
+{
+    const size_t table_size = sizeof(OCV_SOC_TABLE) / sizeof(OCV_SOC_TABLE[0]);
+
+    if (ocv_mV <= OCV_SOC_TABLE[0].ocv) {
+        return OCV_SOC_TABLE[0].soc;
+    }
+    if (ocv_mV >= OCV_SOC_TABLE[table_size - 1U].ocv) {
+        return OCV_SOC_TABLE[table_size - 1U].soc;
+    }
+
+    for (size_t index = 1U; index < table_size; ++index) {
+        const ocv_soc lower = OCV_SOC_TABLE[index - 1U];
+        const ocv_soc upper = OCV_SOC_TABLE[index];
+        if (ocv_mV <= upper.ocv) {
+            const float fraction = (float)(ocv_mV - lower.ocv) /
+                                   (float)(upper.ocv - lower.ocv);
+            return lower.soc + fraction * (upper.soc - lower.soc);
         }
-        current_soc       = ocv_soc_update(min_voltage);
-        before_soc        = current_soc;
-        before_mAs        = shunt_data.current_counter;
-        current_existing  = has_current;
-        last_current_time = has_current ? now : 0U;
-        soc_initialized   = 1;
+    }
+
+    return OCV_SOC_TABLE[table_size - 1U].soc;
+}
+
+bool soc_update_from_ocv(uint16_t ocv_mV)
+{
+    if (ocv_mV == UINT16_MAX) {
+        return false;
+    }
+
+    integrated_soc = round_soc(ocv_to_soc(ocv_mV));
+    current_soc = integrated_soc;
+    return soc_save();
+}
+
+void soc_init(void)
+{
+    uint32_t soc_milli_percent = 0U;
+    if (soc_storage_load(&soc_milli_percent) && soc_milli_percent <= SOC_MILLI_PERCENT_MAX) {
+        current_soc = (float)soc_milli_percent / SOC_PRECISION_SCALE;
+    }
+    else {
+        current_soc = 0.0f;
+    }
+
+    current_soc = round_soc(current_soc);
+    integrated_soc = current_soc;
+    persisted_soc = current_soc;
+    last_current_counter = shunt_data.current_counter;
+    previous_drive_mode = drive_mode;
+    previous_ts_state = ts_state.current_state;
+}
+
+void soc_update(void)
+{
+    /* 上一拍因不在安全窗口而挂起的落盘，进安全窗口后补写。 */
+    if (soc_save_pending && soc_erase_window_safe()) {
+        (void)soc_save();
+    }
+
+    const uint8_t current_drive_mode = drive_mode;
+    const TSState current_ts_state = ts_state.current_state;
+    const bool drive_mode_exit = previous_drive_mode == 1U && current_drive_mode == 0U;
+    const bool active_state_exit = previous_ts_state == TS_ACTIVE && current_ts_state != TS_ACTIVE;
+    const float current_delta_mas = shunt_data.current_counter - last_current_counter;
+
+    last_current_counter = shunt_data.current_counter;
+    previous_drive_mode = current_drive_mode;
+    previous_ts_state = current_ts_state;
+
+    if (charge_finish != 0U) {
+        integrated_soc = 100.0f;
+        current_soc = 100.0f;
+        if (soc_save()) {
+            charge_finish = 0U;
+        }
         return;
     }
 
-    if(has_current) {
-        if(!current_existing) {        /* 新电流段起点，记基准 */
-            before_soc = current_soc;
-            before_mAs = shunt_data.current_counter;
-        }
-        last_current_time = now;
-        current_existing  = 1;
-    }
-    else {
-        current_existing = 0;
-    }
+    /* 分流器正电流定义为充电，负电流定义为放电。 */
+    integrated_soc = clamp_soc(integrated_soc + current_delta_mas / CELL_CAPACITY_MAS * 100.0f);
+    current_soc = round_soc(integrated_soc);
 
-    if(now - last_current_time >= NO_CURRENT_TIME) {
-        current_soc = ocv_soc_update(min_voltage);       /* 静置够久 → OCV 重校 */
+    // SOC变化幅度大于1%时写入flash，驾驶模式退出且断开高压时写入flash
+    if (fabsf(current_soc - persisted_soc) >= SOC_PERSIST_INTERVAL_PERCENT ||
+        ((current_soc == 0.0f || current_soc == 100.0f) && current_soc != persisted_soc) ||
+        (drive_mode_exit && active_state_exit)) {
+        (void)soc_save();
     }
-    else {
-        float mAs_delta = shunt_data.current_counter - before_mAs;
-        float soc_delta = mAs_delta / (float)CELL_CAPACITY * 100.0f;
-        current_soc = before_soc + soc_delta;            /* 充电为正 → SOC 上升 */
-    }
-
-    if(current_soc < 0.0f)   { current_soc = 0.0f; }
-    if(current_soc > 100.0f) { current_soc = 100.0f; }
-}
-
-/* OCV-SOC 查表 + 线性插值。低于表首值返回 0%，高于表尾值返回 100%。 */
-static float ocv_soc_update(uint16_t ocv) {
-    size_t i = 0;
-    size_t array_length = sizeof(OCV_SOC_TABLE) / sizeof(*OCV_SOC_TABLE);
-    while(i < array_length && OCV_SOC_TABLE[i].ocv <= ocv) {
-        i++;
-    }
-
-    if(i == 0) {
-        return OCV_SOC_TABLE[i].soc;
-    }
-
-    if(i == array_length) {
-        return OCV_SOC_TABLE[array_length - 1].soc;
-    }
-
-    uint16_t ocv1 = OCV_SOC_TABLE[i - 1].ocv;
-    uint16_t ocv2 = OCV_SOC_TABLE[i].ocv;
-    float soc1 = OCV_SOC_TABLE[i - 1].soc;
-    float soc2 = OCV_SOC_TABLE[i].soc;
-
-    float slope = (soc2 - soc1) / (float)(ocv2 - ocv1);
-    float interpolate_soc = soc1 + slope * (float)(ocv - ocv1);
-    return interpolate_soc;
 }

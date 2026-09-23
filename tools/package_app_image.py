@@ -21,6 +21,7 @@ from pathlib import Path
 UINT32_MASK = 0xFFFFFFFF
 
 APP_START_ADDRESS_DEFAULT = 0x08010000
+APP_MAX_IMAGE_SIZE_DEFAULT = 0x000B0000
 APP_METADATA_ADDRESS_DEFAULT = 0x080FFF00
 APP_METADATA_MAGIC_DEFAULT = 0xB00710AD
 
@@ -56,11 +57,13 @@ def build_metadata(
     image: bytes,
     *,
     app_start: int,
+    max_image_size: int,
     metadata_address: int,
     magic: int,
 ) -> tuple[bytes, int, int]:
     image_length = len(image)
-    max_image_size = metadata_address - app_start
+    metadata_limited_size = metadata_address - app_start
+    max_image_size = min(max_image_size, metadata_limited_size)
 
     if image_length < 8:
         raise ValueError(f"APP image is too small: {image_length} bytes")
@@ -156,6 +159,12 @@ def main(argv: list[str]) -> int:
     source.add_argument("--elf", type=Path, help="APP ELF image")
     source.add_argument("--bin", type=Path, help="APP-only binary image")
     parser.add_argument(
+        "--max-image-size",
+        type=parse_int,
+        default=APP_MAX_IMAGE_SIZE_DEFAULT,
+        help="Maximum APP binary size, default: 0xB0000 (Sector 4..9)",
+    )
+    parser.add_argument(
         "--objcopy",
         default="arm-none-eabi-objcopy",
         help="objcopy executable used when --elf is provided",
@@ -212,6 +221,7 @@ def main(argv: list[str]) -> int:
         metadata, image_length, image_crc32 = build_metadata(
             image,
             app_start=args.app_start,
+            max_image_size=args.max_image_size,
             metadata_address=args.metadata_address,
             magic=args.magic,
         )

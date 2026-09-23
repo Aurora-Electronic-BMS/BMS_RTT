@@ -37,10 +37,11 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtdef.h \
  ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtservice.h \
  ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtm.h \
- ../Core/Inc/can_custom.h \
+ ../Core/Inc/bms_config.h ../Core/Inc/can_custom.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h \
  ../Core/Inc/state_machine.h ../Core/Inc/state_machine_core.h \
- ../Core/Inc/shunt_monitor.h ../Core/Inc/slave_monitor.h \
+ ../Core/Inc/bms_config.h ../Core/Inc/shunt_monitor.h \
+ ../Core/Inc/slave_monitor.h \
  D:/dkt_stm32/DKT/BMS_RTT/APP/Hardware/LTC6804-1/LTC68041.h \
  ../Core/Inc/soc_estimation.h ../Core/Inc/state_machine.h \
  ../Core/Inc/telemetry_serial.h
@@ -87,10 +88,12 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtdef.h:
 ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtservice.h:
 ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtm.h:
+../Core/Inc/bms_config.h:
 ../Core/Inc/can_custom.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h:
 ../Core/Inc/state_machine.h:
 ../Core/Inc/state_machine_core.h:
+../Core/Inc/bms_config.h:
 ../Core/Inc/shunt_monitor.h:
 ../Core/Inc/slave_monitor.h:
 D:/dkt_stm32/DKT/BMS_RTT/APP/Hardware/LTC6804-1/LTC68041.h:

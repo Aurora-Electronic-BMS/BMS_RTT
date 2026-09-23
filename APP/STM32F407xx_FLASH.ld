@@ -57,8 +57,9 @@ MEMORY
 {
 RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K
 CCMRAM (xrw)      : ORIGIN = 0x10000000, LENGTH = 64K
-/* Last 256 bytes (0x080FFF00..0x080FFFFF) are Bootloader validity metadata. */
-FLASH (rx)      : ORIGIN = 0x8010000, LENGTH = 0xEFF00
+/* Sector 10 (0x080C0000..0x080DFFFF) stores runtime configuration.
+ * Sector 11 tail (0x080FFF00..0x080FFFFF) is Bootloader validity metadata. */
+FLASH (rx)      : ORIGIN = 0x8010000, LENGTH = 0xB0000
 }
 
 /* Highest address of the user mode stack */

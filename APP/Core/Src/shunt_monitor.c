@@ -9,6 +9,7 @@
  * 锁：shunt_data 会被 CAN RX 线程写、控制/遥测线程读，故所有读写都在 state_mtx 内。
  * ========================================================================== */
 #include "shunt_monitor.h"
+#include "bms_config.h"
 #include "bms_io.h"
 #include <string.h>
 #include "can_custom.h"
@@ -21,11 +22,19 @@
 ShuntData shunt_data;
 int shunt_error = 0;
 
-/* 四个保护的去抖时长：超时/过流 500ms，过温/失配 1000ms；均锁存（须显式清错）。 */
-static ErrorMonitor shunt_timeout_monitor = ERROR_MONITOR_INIT(500, ERROR_LATCH_ENABLE);
-static ErrorMonitor shunt_overcurrent_monitor = ERROR_MONITOR_INIT(500, ERROR_LATCH_ENABLE);
-static ErrorMonitor shunt_overtemp_monitor = ERROR_MONITOR_INIT(1000, ERROR_LATCH_ENABLE);
-static ErrorMonitor shunt_voltage_mismatch_monitor = ERROR_MONITOR_INIT(1000, ERROR_LATCH_ENABLE);
+/* 四个保护监视器均锁存（须显式清错）；去抖时长来自 bms_config，见 shunt_apply_config()。 */
+static ErrorMonitor shunt_timeout_monitor = { .latch = ERROR_LATCH_ENABLE, };
+static ErrorMonitor shunt_overcurrent_monitor = { .latch = ERROR_LATCH_ENABLE, };
+static ErrorMonitor shunt_overtemp_monitor = { .latch = ERROR_LATCH_ENABLE, };
+static ErrorMonitor shunt_voltage_mismatch_monitor = { .latch = ERROR_LATCH_ENABLE, };
+
+/* 把配置里的确认时长刷进监视器；bms_config_init/bms_config_apply 会在校验通过后调用。 */
+void shunt_apply_config(void) {
+    shunt_timeout_monitor.delay_ms = (uint32_t)bms_config.shunt_timeout_confirm_ms;
+    shunt_overcurrent_monitor.delay_ms = (uint32_t)bms_config.shunt_overcurrent_confirm_ms;
+    shunt_overtemp_monitor.delay_ms = (uint32_t)bms_config.shunt_overtemp_confirm_ms;
+    shunt_voltage_mismatch_monitor.delay_ms = (uint32_t)bms_config.shunt_voltage_mismatch_confirm_ms;
+}
 
 void shunt_init() {
     shunt_data.current = 0;
@@ -57,17 +66,17 @@ void shunt_check() {
 
     /* 全程持锁：shunt_data 由 CAN RX 线程写、这里读，需一致快照 */
     bms_state_lock();
-    /* 超时：距最近一帧 > SHUNT_TIMEOUT(500ms)。注意注入会刷新 last_message，
+    /* 超时：距最近一帧 > bms_config.shunt_timeout_ms。注意注入会刷新 last_message，
      * 故要触发超时必须**停止**注入，而非注入 0。 */
-    if(error_monitor_update(&shunt_timeout_monitor, HAL_GetTick() - shunt_data.last_message > SHUNT_TIMEOUT)) {
+    if(error_monitor_update(&shunt_timeout_monitor, HAL_GetTick() - shunt_data.last_message > (uint32_t)bms_config.shunt_timeout_ms)) {
         kind = (TSErrorKind)(kind | TS_ERROR_SHUNT_TIMEOUT);
     }
-    /* 过流：放电方向 < -200A 或充电方向 > 55A（阈值见 shunt_monitor.h）。 */
-    if(error_monitor_update(&shunt_overcurrent_monitor, shunt_data.current < -SHUNT_OVERCURRENT_DISCHARGE || shunt_data.current > SHUNT_OVERCURRENT_CHARGE)) {
+    /* 过流：放电方向 < -shunt_overcurrent_discharge_mA 或充电方向 > shunt_overcurrent_charge_mA。 */
+    if(error_monitor_update(&shunt_overcurrent_monitor, shunt_data.current < -bms_config.shunt_overcurrent_discharge_mA || shunt_data.current > bms_config.shunt_overcurrent_charge_mA)) {
         kind = (TSErrorKind)(kind | TS_ERROR_SHUNT_OVERCURRENT);
     }
-    /* 过温：母线温度 > 100.0℃。 */
-    if(error_monitor_update(&shunt_overtemp_monitor, shunt_data.busbartemp > SHUNT_OVERTEMP)) {
+    /* 过温：母线温度 > shunt_overtemp_dC（0.1℃ 单位）。 */
+    if(error_monitor_update(&shunt_overtemp_monitor, shunt_data.busbartemp > bms_config.shunt_overtemp_dC)) {
         kind = (TSErrorKind)(kind | TS_ERROR_SHUNT_OVERTEMP);
     }
     /* 电压失配：AFE 汇总电压 Bat_Volt 与分流器上报电压_bat 相差 > 10V。
@@ -142,13 +151,13 @@ void shunt_handle_can_message(uint16_t id, const uint8_t *data) {
         shunt_accumulate_current();
         break;
     case CAN_ID_SHUNT_VOLTAGE_1:
-        shunt_data.voltage_x = message;
+        shunt_data.voltage_bat = message;   /* U1 = 电池侧总压 */
         break;
     case CAN_ID_SHUNT_VOLTAGE_2:
-        shunt_data.voltage_veh = message;
+        shunt_data.voltage_veh = message;   /* U2 = 车辆侧 */
         break;
     case CAN_ID_SHUNT_VOLTAGE_3:
-        shunt_data.voltage_bat = message;
+        shunt_data.voltage_x = message;     /* U3 未参与保护 */
         break;
     case CAN_ID_SHUNT_BUSBAR_TEMP:
         shunt_data.busbartemp = message;

@@ -67,6 +67,8 @@ Copyright 2013 Linear Technology Corp. (LTC)
 #include "main.h"
 #include <string.h>
 #include "slave_monitor.h"
+#include "bms_config.h"
+#include <rtthread.h>
 extern SPI_HandleTypeDef hspi1;
 
 
@@ -80,15 +82,23 @@ uint8_t ADAX[2]; //!< GPIO conversion command.
 #define CS_high  HAL_GPIO_WritePin(SPI1_CS_GPIO_Port, SPI1_CS_Pin, GPIO_PIN_SET) 
 #define CS_low   HAL_GPIO_WritePin(SPI1_CS_GPIO_Port, SPI1_CS_Pin, GPIO_PIN_RESET) 
 
-uint8_t tx_cfg[TOTAL_IC][6];
-uint8_t rx_cfg[TOTAL_IC][8];
+uint8_t tx_cfg[BMS_MAX_IC][6];
+uint8_t rx_cfg[BMS_MAX_IC][8];
+
+/* 模块级静态缓冲(替代官方 Linduino 的 malloc/free,避免 RTOS 堆竞争与碎片) */
+static uint8_t dcv_rx_buf[8 * BMS_MAX_IC];      /* LTC6804_rdcv  数据缓冲 */
+static uint8_t aux_rx_buf[8 * BMS_MAX_IC];      /* LTC6804_rdaux 数据缓冲 */
+static uint8_t cfg_tx_buf[4 + 8 * BMS_MAX_IC];  /* LTC6804_wrcfg 发送缓冲 */
+static uint8_t cfg_rx_buf[8 * BMS_MAX_IC];      /* LTC6804_rdcfg 数据缓冲 */
+static uint8_t spi_tx_buf[4 + 8 * BMS_MAX_IC];  /* spi_write_read 组合收发缓冲 */
+static uint8_t spi_rx_buf[4 + 8 * BMS_MAX_IC];
 
 
 void init_cfg(void)
 {
     int i;
 
-    for(i = 0; i<TOTAL_IC;i++)
+    for(i = 0; i<(int)bms_config.total_ic;i++)
     {
         tx_cfg[i][0] = 0x7A ;
         tx_cfg[i][1] = 0x00 ;   
@@ -110,19 +120,19 @@ void LTC6804_initialize(void)
 {   int i;    
     init_cfg();
 	  set_adc(MD_FAST,DCP_DISABLED,CELL_CH_ALL,AUX_CH_ALL);//ADAX��������
-    //wakeup_sleep(TOTAL_IC);
-    LTC6804_wrcfg(TOTAL_IC,tx_cfg);//??????????
-	  HAL_Delay(1);
-	  //wakeup_sleep(TOTAL_IC)
-	  int r = LTC6804_rdcfg(TOTAL_IC,rx_cfg);
-	  HAL_Delay(3);
+    //wakeup_sleep(bms_config.total_ic);
+    LTC6804_wrcfg((uint8_t)bms_config.total_ic,tx_cfg);//???6804??Ĭ������д��ͬ��������
+	  rt_thread_mdelay(1);
+	  //wakeup_sleep(bms_config.total_ic)
+	  int r = LTC6804_rdcfg((uint8_t)bms_config.total_ic,rx_cfg);
+	  rt_thread_mdelay(3);
     if (r == -1)  //?????????????
     {
-        printf("LTC6804_MODULAR INIT NG!\n\r");
+        rt_kprintf("[AFE] LTC6804_INIT NG (PEC bad)\r\n");
     }
     else
     {
-        printf("LTC6804_MODULAR INIT OK!\n\r");
+        rt_kprintf("[AFE] LTC6804_INIT OK, %d IC(s)\r\n", bms_config.total_ic);
     }
 
 }
@@ -198,7 +208,7 @@ void LTC6804_adcv()
   cmd[3] = (uint8_t)(cmd_pec);
   
   //3
-  wakeup_sleep(TOTAL_IC);  //This will guarantee that the LTC6804 isoSPI port is awake. This command can be removed.
+  wakeup_sleep((uint8_t)bms_config.total_ic);  //This will guarantee that the LTC6804 isoSPI port is awake. This command can be removed.
   
   //4
   CS_low;
@@ -312,7 +322,7 @@ uint8_t LTC6804_rdcv(uint8_t reg, // Controls which cell voltage register is rea
   uint16_t received_pec;
   uint16_t data_pec;
   uint8_t data_counter=0; //data counter
-  cell_data = (uint8_t *) malloc((NUM_RX_BYT*total_ic)*sizeof(uint8_t));
+  cell_data = dcv_rx_buf;
   //1.a
   if (reg == 0)
   {
@@ -389,7 +399,7 @@ uint8_t LTC6804_rdcv(uint8_t reg, // Controls which cell voltage register is rea
   }
 
  //2
- free(cell_data);
+  // free(cell_data) — 已镜像为模块级静态缓冲 dcv_rx_buf,无需释放 // LTC6804_rdcv 镜像:已改静态 dcv_rx_buf,此 free 保留(官方正式版亦有)
 return(pec_error);
 }
 /*
@@ -542,7 +552,7 @@ int8_t LTC6804_rdaux(uint8_t reg, //Determines which GPIO voltage register is re
   uint16_t parsed_aux;
   uint16_t received_pec;
   uint16_t data_pec;
-  data = (uint8_t *) malloc((NUM_RX_BYT*total_ic)*sizeof(uint8_t));
+  data = aux_rx_buf;
   //1.a
   if (reg == 0)
   {
@@ -616,7 +626,7 @@ int8_t LTC6804_rdaux(uint8_t reg, //Determines which GPIO voltage register is re
 																					//must be incremented by 2 bytes to point to the next ICs gpio voltage data
 	}
   }
-  free(data);
+  // free(data) — 已镜像为模块级静态缓冲 aux_rx_buf,无需释放
   return (pec_error);
 }
 /*
@@ -843,7 +853,7 @@ void LTC6804_wrcfg(uint8_t total_ic, //The number of ICs being written to
   uint16_t cfg_pec;
   uint8_t cmd_index; //command counter
   
-  cmd = (uint8_t *)malloc(CMD_LEN*sizeof(uint8_t));
+  cmd = cfg_tx_buf;
   
   //1
   cmd[0] = 0x00;
@@ -876,7 +886,7 @@ void LTC6804_wrcfg(uint8_t total_ic, //The number of ICs being written to
   CS_low;
 	HAL_SPI_Transmit(&hspi1,cmd,CMD_LEN,HAL_MAX_DELAY);
   CS_high;
-  free(cmd);
+  // free(cmd) — 已镜像为模块级静态缓冲 cfg_tx_buf,无需释放
 }
 /*
 	WRCFG Sequence:
@@ -929,7 +939,7 @@ Command Code:
   uint16_t data_pec;
   uint16_t received_pec;
   int i,j;
-  rx_data = (uint8_t *) malloc((8*total_ic)*sizeof(uint8_t));
+  rx_data = cfg_rx_buf;
   
   //1
   cmd[0] = 0x00;
@@ -958,16 +968,16 @@ Command Code:
     }
     //4.b
     received_pec = (r_config[current_ic][6]<<8) + r_config[current_ic][7];
-		printf("received_pec=%d \n",received_pec);
+		rt_kprintf("received_pec=%d \n",received_pec);
     data_pec = pec15_calc(6, &r_config[current_ic][0]);
-		printf("data_pec=%d \n",data_pec);
+		rt_kprintf("data_pec=%d \n",data_pec);
     if(received_pec != data_pec)
     {
       pec_error = -1;
     }  
   }
   
-  free(rx_data);
+  // free(rx_data) — 已镜像为模块级静态缓冲 cfg_rx_buf,无需释放
   //5
   return(pec_error);
 }
@@ -991,9 +1001,9 @@ Command Code:
 void wakeup_idle()
 {
     CS_low;
-    HAL_Delay(2);
+    rt_thread_mdelay(2);
     CS_high;
-    HAL_Delay(2);
+    rt_thread_mdelay(2);
 }
 
 /*!****************************************************
@@ -1006,9 +1016,9 @@ void wakeup_sleep(uint8_t total_ic)
   for (uint8_t current_ic = 0; current_ic < total_ic; current_ic++)
   {
     CS_low;
-    HAL_Delay(1);
+    rt_thread_mdelay(1);
     CS_high;
-    HAL_Delay(1);
+    rt_thread_mdelay(1);
   }
 }
 /*!**********************************************************
@@ -1093,15 +1103,11 @@ void spi_write_read(uint8_t tx_Data[], // array of data to be written on SPI por
     
     if (rx_len > 0) {
         // �����Ҫ�������ݣ������㹻��Ļ�����
-        tx_buffer = (uint8_t *)malloc((tx_len + rx_len) * sizeof(uint8_t));
-        rx_buffer = (uint8_t *)malloc((tx_len + rx_len) * sizeof(uint8_t));
+  tx_buffer = spi_tx_buf;
+  rx_buffer = spi_rx_buf;
         
-        if (tx_buffer == NULL || rx_buffer == NULL) {
-            // �ڴ����ʧ�ܴ���
-            if (tx_buffer) free(tx_buffer);
-            if (rx_buffer) free(rx_buffer);
-            return;
-        }
+        // 静态缓冲不可能为 NULL,失败分支不再需要
+        // (tx_buffer 已镜像为 spi_tx_buf, rx_buffer 已镜像为 spi_rx_buf)
         
         // ���Ʒ������ݵ�������
         memcpy(tx_buffer, tx_Data, tx_len);
@@ -1117,8 +1123,8 @@ void spi_write_read(uint8_t tx_Data[], // array of data to be written on SPI por
             memcpy(rx_data, rx_buffer + tx_len, rx_len);
         }
         
-        free(tx_buffer);
-        free(rx_buffer);
+        // free(tx_buffer) — 已镜像为模块级静态缓冲 spi_tx_buf,无需释放
+        // free(rx_buffer) — 已镜像为模块级静态缓冲 spi_rx_buf,无需释放
     } else {
         // ���ֻ���Ͳ����գ�ֱ��ʹ��HAL_SPI_Transmit
         HAL_SPI_Transmit(&hspi1, tx_Data, tx_len, HAL_MAX_DELAY);

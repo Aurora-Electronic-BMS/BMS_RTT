@@ -1,6 +1,6 @@
 # BMS Bootloader 升级协议
 
-Bootloader 同时监听 USART2 和 USART3，两路串口配置均为 `115200 8N1`。
+Bootloader 同时监听 USART1 和 USART3，两路串口配置均为 `115200 8N1`。
 收到第一帧合法 `HELLO` 握手命令后，Bootloader 会锁定该串口，本次升级的
 ACK、NACK 和固件数据都使用这一路串口。如果检测到有效 APP，Bootloader 将
 等待 500 ms 接收握手命令；等待超时后跳转至 APP。
@@ -8,7 +8,7 @@ ACK、NACK 和固件数据都使用这一路串口。如果检测到有效 APP�
 为避免上电初始化或串口切换瞬间丢失单帧数据，上位机应周期性重发 `HELLO`，
 直到收到 ACK 后再发送 BEGIN。
 
-APP 正常运行期间也会同时监听 USART2 和 USART3。上位机发送 `0x13` 进入
+APP 正常运行期间也会同时监听 USART1 和 USART3。上位机发送 `0x13` 进入
 Bootloader 命令后，APP 会在 RTC 备份寄存器写入升级请求标志并执行软件复位。
 Bootloader 检测并清除该标志后，将忽略有效 APP，不再执行 500 ms 超时跳转，
 而是一直等待任意一路串口发送合法 `HELLO`。

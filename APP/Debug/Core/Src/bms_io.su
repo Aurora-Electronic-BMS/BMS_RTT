@@ -10,5 +10,3 @@
 ../Core/Src/bms_io.c:188:13:io_emit	24	static
 ../Core/Src/bms_io.c:196:6:bms_out	32	static
 ../Core/Src/bms_io.c:226:15:bms_in	24	static
-../Core/Src/bms_io.c:249:5:bms_io_inject	32	static
-../Core/Src/bms_io.c:281:6:bms_io_dump	40	static

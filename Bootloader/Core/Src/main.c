@@ -66,8 +66,9 @@ typedef struct
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define APP_START_ADDRESS       0x08010000UL
+#define APP_CONFIG_ADDRESS      0x080C0000UL
 #define APP_METADATA_ADDRESS    0x080FFF00UL
-#define APP_MAX_IMAGE_SIZE      (APP_METADATA_ADDRESS - APP_START_ADDRESS)
+#define APP_MAX_IMAGE_SIZE      (APP_CONFIG_ADDRESS - APP_START_ADDRESS)
 #define APP_METADATA_MAGIC      0xB00710ADUL
 #define BOOT_REQUEST_MAGIC      0xB007B007UL
 
@@ -113,16 +114,17 @@ typedef struct
 /* Private variables ---------------------------------------------------------*/
 CRC_HandleTypeDef hcrc;
 
-UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 static boot_frame_t rx_frame;
 static boot_stream_parser_t detection_parsers[2];
 static UART_HandleTypeDef *boot_uart;
-/* IAP 收帧同时轮询这两个口：USART2(PA2/PA3) 与 USART3(PB10/PB11)。
+/* IAP 收帧同时轮询这两个口：USART1(PA9/PA10) 与 USART3(PB10/PB11)，与 APP 侧
+ * 的主机链路一致（APP 用 telemetry_serial_init(&huart1, &huart3)）。
  * 首帧从哪个口进来，本次升级会话就固定用哪个口回 ACK / 收数据 / 收 RUN。 */
-static UART_HandleTypeDef *const boot_ports[] = {&huart2, &huart3};
+static UART_HandleTypeDef *const boot_ports[] = {&huart1, &huart3};
 #define BOOT_PORT_COUNT (sizeof(boot_ports) / sizeof(boot_ports[0]))
 
 /* USER CODE END PV */
@@ -132,7 +134,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_CRC_Init(void);
 static void MX_USART3_UART_Init(void);
-static void MX_USART2_UART_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 static uint16_t get_u16_le(const uint8_t *data);
 static uint32_t get_u32_le(const uint8_t *data);
@@ -480,7 +482,13 @@ static bool erase_app_sectors(void)
   erase.TypeErase = FLASH_TYPEERASE_SECTORS;
   erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
   erase.Sector = FLASH_SECTOR_4;
-  erase.NbSectors = 8U;
+  /* 只擦 4~9（0x08010000..0x080BFFFF，共 704KB = APP 链接脚本的 FLASH LENGTH）。
+   * 必须**止步于 Sector 9**：Sector 10 (0x080C0000) 是 APP 的持久化配置/SOC 追加区
+   * （APP_CONFIG_ADDRESS，见 bms_config.h），之前连擦到 Sector 11 会把 total_ic、
+   * 保护阈值和 SOC 一起抹掉，每次 OTA 后静默回默认值。
+   * Sector 11 (0x080FFF00 元数据) 也不在擦除范围：由 write_app_metadata() 显式改写，
+   * 且旧的 image_crc32 对不上已被擦成 0xFF 的镜像，启动校验自然失败。 */
+  erase.NbSectors = 6U;
   status = HAL_FLASHEx_Erase(&erase, &sector_error);
   (void)HAL_FLASH_Lock();
   return (status == HAL_OK) && (sector_error == 0xFFFFFFFFUL);
@@ -491,7 +499,7 @@ static bool program_flash_bytes(uint32_t address, const uint8_t *data, uint32_t 
   uint32_t end = address + length;
 
   if ((length == 0U) || (address < APP_START_ADDRESS) || (end < address) ||
-      (end > APP_METADATA_ADDRESS))
+      (end > APP_CONFIG_ADDRESS))
   {
     return false;
   }
@@ -552,7 +560,7 @@ static void jump_to_app(void)
   uint32_t app_reset = *(volatile const uint32_t *)(APP_START_ADDRESS + 4U);
 
   __disable_irq();
-  (void)HAL_UART_DeInit(&huart2);
+  (void)HAL_UART_DeInit(&huart1);
   (void)HAL_UART_DeInit(&huart3);
   (void)HAL_CRC_DeInit(&hcrc);
   (void)HAL_DeInit();
@@ -801,7 +809,7 @@ int main(void)
   MX_GPIO_Init();
   MX_CRC_Init();
   MX_USART3_UART_Init();
-  MX_USART2_UART_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   boot_uart = NULL;
   bool force_upgrade = consume_boot_request();
@@ -942,35 +950,35 @@ static void MX_CRC_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function
+  * @brief USART1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_USART2_UART_Init(void)
+static void MX_USART1_UART_Init(void)
 {
 
-  /* USER CODE BEGIN USART2_Init 0 */
+  /* USER CODE BEGIN USART1_Init 0 */
 
-  /* USER CODE END USART2_Init 0 */
+  /* USER CODE END USART1_Init 0 */
 
-  /* USER CODE BEGIN USART2_Init 1 */
+  /* USER CODE BEGIN USART1_Init 1 */
 
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART2_Init 2 */
+  /* USER CODE BEGIN USART1_Init 2 */
 
-  /* USER CODE END USART2_Init 2 */
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -1020,9 +1028,9 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(PRECHARGE_CTRL_GPIO_Port, PRECHARGE_CTRL_Pin, GPIO_PIN_RESET);

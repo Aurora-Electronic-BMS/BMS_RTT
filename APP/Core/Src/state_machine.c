@@ -16,6 +16,7 @@
  * ========================================================================== */
 
 #include "state_machine.h"
+#include "bms_config.h"
 #include "bms_io.h"
 #include "main.h"
 #include "shunt_monitor.h"
@@ -195,8 +196,8 @@ void ts_sm_AIR_close_wait(int *AIR_state, int AIR_cmd) {
         *AIR_state = AIR_cmd;
         if(AIR_cmd) {
             uint32_t dt = HAL_GetTick() - fsm_ctx.air_last_close_timestamp;
-            if(dt < AIR_CLOSE_WAIT) {
-                BMS_DELAY_MS(AIR_CLOSE_WAIT - dt);
+            if(dt < (uint32_t)bms_config.air_close_wait_ms) {
+                BMS_DELAY_MS((uint32_t)bms_config.air_close_wait_ms - dt);
             }
             fsm_ctx.air_last_close_timestamp = HAL_GetTick();
         }
@@ -219,7 +220,7 @@ void sm_handle_can_message(const uint8_t *data) {
  * 本函数只是它的看门狗，无迁移读 drive_mode，故不并入内核。 */
 void drive_mode_timeout_check() {
     if(drive_mode == 1 &&
-       HAL_GetTick() - fsm_ctx.last_vcu_can_msg > DRIVE_MODE_TIMEOUT) {
+       HAL_GetTick() - fsm_ctx.last_vcu_can_msg > (uint32_t)bms_config.drive_mode_timeout_ms) {
         drive_mode = 0;
     }
 }
@@ -290,6 +291,13 @@ int ts_sm_serial_set_manual_air(int enable, uint8_t air_bits) {
         ts_state.current_state = TS_INACTIVE;
         bms_state_unlock();
         return 1;
+    }
+
+    /* 安全护栏：故障未清 或 SDC 未闭合时拒绝手动吸合，避免带故障/无安全回路合闸。
+     * 只拦吸合(enable!=0)；上面的断开分支不拦，保证任何情况下都能释放继电器。 */
+    if(ts_state.error != 0U || sdc_closed == 0) {
+        bms_state_unlock();
+        return 0;
     }
 
     /* Manual AIR is an independent relay-output test controlled by the host. */
@@ -372,6 +380,8 @@ bool error_monitor_update(ErrorMonitor *monitor, bool exist) {
 
     if(drive_mode == 1 && abs(shunt_data.current) < 1000 && monitor->confirm == false) {
         monitor->confirm = false;
+        monitor->pending = false;
+        monitor->pending_start = 0;
         bms_state_unlock();
         return false;
     }

@@ -1,3 +1,5 @@
+from PyQt6.QtWidgets import QMessageBox
+
 from bms_host.main_window import MainWindow
 
 
@@ -33,6 +35,14 @@ class ClearFaultWorkerStub:
         self.clear_requests += 1
 
 
+class SocWorkerStub:
+    def __init__(self) -> None:
+        self.update_requests = 0
+
+    def update_soc_from_ocv(self) -> None:
+        self.update_requests += 1
+
+
 def test_exit_manual_mode_releases_and_unchecks_all_relays() -> None:
     window = MainWindow.__new__(MainWindow)
     window.worker = WorkerStub()
@@ -62,3 +72,20 @@ def test_clear_errors_sends_one_shot_command_when_connected() -> None:
 
     assert window.worker.clear_requests == 1
     assert window.message_label.text == "Clear-fault command sent."
+
+
+def test_soc_update_sends_command_after_confirmation(monkeypatch) -> None:
+    window = MainWindow.__new__(MainWindow)
+    window.worker = SocWorkerStub()
+    window.bms_connected = True
+    window.message_label = LabelStub()
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args: QMessageBox.StandardButton.Yes,
+    )
+
+    MainWindow._confirm_soc_update(window)
+
+    assert window.worker.update_requests == 1
+    assert window.message_label.text == "SOC update command sent."

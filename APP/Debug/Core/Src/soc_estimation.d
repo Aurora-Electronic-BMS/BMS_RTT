@@ -1,5 +1,6 @@
 Core/Src/soc_estimation.o: ../Core/Src/soc_estimation.c \
- ../Core/Inc/soc_estimation.h ../Core/Inc/shunt_monitor.h \
+ ../Core/Inc/soc_estimation.h ../Core/Inc/bms_config.h \
+ ../Core/Inc/can_custom.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h \
  ../Core/Inc/stm32f4xx_hal_conf.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc.h \
@@ -30,10 +31,13 @@ Core/Src/soc_estimation.o: ../Core/Src/soc_estimation.c \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h \
- ../Core/Inc/slave_monitor.h \
- D:/dkt_stm32/DKT/BMS_RTT/APP/Hardware/LTC6804-1/LTC68041.h
+ ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h \
+ ../Core/Inc/state_machine.h ../Core/Inc/state_machine_core.h \
+ ../Core/Inc/bms_config.h ../Core/Inc/shunt_monitor.h \
+ ../Core/Inc/state_machine.h
 ../Core/Inc/soc_estimation.h:
-../Core/Inc/shunt_monitor.h:
+../Core/Inc/bms_config.h:
+../Core/Inc/can_custom.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc.h:
@@ -64,5 +68,9 @@ Core/Src/soc_estimation.o: ../Core/Src/soc_estimation.c \
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h:
-../Core/Inc/slave_monitor.h:
-D:/dkt_stm32/DKT/BMS_RTT/APP/Hardware/LTC6804-1/LTC68041.h:
+../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h:
+../Core/Inc/state_machine.h:
+../Core/Inc/state_machine_core.h:
+../Core/Inc/bms_config.h:
+../Core/Inc/shunt_monitor.h:
+../Core/Inc/state_machine.h:

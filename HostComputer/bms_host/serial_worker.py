@@ -13,6 +13,7 @@ from .protocol import (
     BOOT_APP_START,
     BOOT_DATA_SIZE,
     BOOT_MAX_IMAGE_SIZE,
+    BmsConfiguration,
     BootResult,
     FrameParser,
     MsgType,
@@ -24,10 +25,15 @@ from .protocol import (
     build_clear_errors,
     build_enter_bootloader,
     build_heartbeat,
+    build_get_configuration,
     build_set_manual_air,
+    build_set_configuration,
     build_set_target_state,
+    build_software_reset,
+    build_update_soc_from_ocv,
     decode_ack,
     decode_boot_response,
+    decode_configuration,
     decode_telemetry,
 )
 
@@ -42,6 +48,7 @@ class FirmwareUpgradeError(RuntimeError):
 
 class SerialWorker(QThread):
     telemetry_received = pyqtSignal(object)
+    configuration_received = pyqtSignal(object)
     ack_received = pyqtSignal(dict)
     status_changed = pyqtSignal(str)
     error = pyqtSignal(str)
@@ -72,6 +79,22 @@ class SerialWorker(QThread):
     def send_clear_errors(self) -> None:
         if not self._upgrade_active:
             self._tx_queue.put(build_clear_errors(self._next_seq()))
+
+    def update_soc_from_ocv(self) -> None:
+        if not self._upgrade_active:
+            self._tx_queue.put(build_update_soc_from_ocv(self._next_seq()))
+
+    def request_configuration(self) -> None:
+        if not self._upgrade_active:
+            self._tx_queue.put(build_get_configuration(self._next_seq()))
+
+    def save_configuration(self, configuration: BmsConfiguration) -> None:
+        if not self._upgrade_active:
+            self._tx_queue.put(build_set_configuration(self._next_seq(), configuration))
+
+    def request_software_reset(self) -> None:
+        if not self._upgrade_active:
+            self._tx_queue.put(build_software_reset(self._next_seq()))
 
     def send_heartbeat(self) -> None:
         if not self._upgrade_active:
@@ -333,6 +356,8 @@ class SerialWorker(QThread):
         try:
             if frame.msg_type == MsgType.TELEMETRY_FULL:
                 self.telemetry_received.emit(decode_telemetry(frame.payload))
+            elif frame.msg_type == MsgType.CONFIGURATION:
+                self.configuration_received.emit(decode_configuration(frame.payload))
             elif frame.msg_type == MsgType.ACK:
                 self.ack_received.emit(decode_ack(frame.payload))
         except ValueError as exc:

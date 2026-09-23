@@ -26,7 +26,8 @@ C_SRCS += \
 ../Core/Src/sysmem.c \
 ../Core/Src/system_stm32f4xx.c \
 ../Core/Src/telemetry_serial.c \
-../Core/Src/usart.c 
+../Core/Src/usart.c \
+../Core/Src/bms_config.c 
 
 OBJS += \
 ./Core/Src/LTC68041_stub.o \
@@ -50,7 +51,8 @@ OBJS += \
 ./Core/Src/sysmem.o \
 ./Core/Src/system_stm32f4xx.o \
 ./Core/Src/telemetry_serial.o \
-./Core/Src/usart.o 
+./Core/Src/usart.o \
+./Core/Src/bms_config.o 
 
 C_DEPS += \
 ./Core/Src/LTC68041_stub.d \
@@ -74,7 +76,8 @@ C_DEPS += \
 ./Core/Src/sysmem.d \
 ./Core/Src/system_stm32f4xx.d \
 ./Core/Src/telemetry_serial.d \
-./Core/Src/usart.d 
+./Core/Src/usart.d \
+./Core/Src/bms_config.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes

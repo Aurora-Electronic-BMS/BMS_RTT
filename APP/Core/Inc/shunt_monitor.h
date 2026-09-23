@@ -9,12 +9,8 @@
 #include <stdint.h>
 #include "stm32f4xx_hal.h"
 
-/* 保护阈值。注意过流分方向：放电允许更大（200A），充电限制（55A）。 */
-#define SHUNT_TIMEOUT 500                       //ms
-#define SHUNT_OVERCURRENT_DISCHARGE 200000      //mA
-#define SHUNT_OVERCURRENT_CHARGE 55000          //mA
-#define SHUNT_OVERCURREMT_REGEN 25000           //mA
-#define SHUNT_OVERTEMP 1000                     //1/10 ˚C
+/* 保护阈值不再编译期固定：全部来自 bms_config（运行时可经 0x16 改写、掉电保持）。
+ * 注意过流分方向：放电允许更大，充电限制更严。 */
 
 /* 分流器上报数据（全部来自 CAN1 0x52x 段）。current 有符号，正负号定义由分流器决定。
  * last_current_message==0 表示还没收到过电流帧，电流累计从第二帧起才计算。 */
@@ -37,6 +33,8 @@ extern int shunt_error;
 void shunt_init();
 void shunt_check();
 void shunt_clear_errors();
+/* 把 bms_config 里的确认时长刷进四个监视器（bms_config_init/apply 时调用）。 */
+void shunt_apply_config(void);
 void shunt_handle_can_message(uint16_t id, const uint8_t *data);
 
 /* 故障注入（逻辑验证用）：直接改写 shunt_data 字段并刷新 last_message。

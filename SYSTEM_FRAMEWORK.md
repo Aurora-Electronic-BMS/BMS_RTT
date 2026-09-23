@@ -25,7 +25,7 @@ flowchart LR
     Charger["充电机 / CCS"] <-->|"CAN2"| APP
     APP -->|"GPIO"| HV["AIR_POS / AIR_NEG / AIR_PRE\n高压回路"]
     APP -->|"状态与测量"| CANOut["BMS CAN 状态报文"]
-    Host["PyQt6 上位机"] <-->|"USART2 或 USART3\n115200 8N1"| APP
+    Host["PyQt6 上位机"] <-->|"USART1 或 USART3\n115200 8N1"| APP
     Host -->|"升级协议"| Boot["Bootloader"]
     Boot -->|"校验后跳转"| APP
     Probe["ST-Link"] -->|"SWD"| MCU["STM32 Flash"]
@@ -35,7 +35,7 @@ flowchart LR
 
 ### 2.1 MCU 基础与驱动层
 
-- CubeMX/HAL 生成的外设初始化位于 `APP/Core/Src/`：GPIO、CAN1/CAN2、SPI1/SPI3、USART2/USART3、时钟和中断。
+- CubeMX/HAL 生成的外设初始化位于 `APP/Core/Src/`：GPIO、CAN1/CAN2、SPI1/SPI3、USART1/USART3、时钟和中断。
 - `APP/Hardware/LTC6804-1/` 封装 LTC6804-1 的电芯电压与辅助通道访问。
 - `APP/Hardware/can-halal/` 为双 bxCAN 提供初始化、过滤、收发和回调适配。
 - APP 采用 HAL `SysTick` 作为所有延时、超时和故障去抖的时间基准。
@@ -48,7 +48,7 @@ flowchart LR
 | 分流器监测 | CAN1 的 `0x521`~`0x528` | 电流、包/车端电压、母排温度、功率/能量、分流器故障源 | `shunt_monitor.c` |
 | SOC 估算 | 最低单体电压、分流器电流积分 | `current_soc` | `soc_estimation.c` |
 
-当前 APP 主循环调用了前两个监测模块；`soc_estimation.c` 虽被编入 APP，但未发现 `soc_init()` 或 `soc_update()` 的调用，也未被加入 CAN/串口遥测。因此 SOC 在当前版本属于**已提供但未接入运行闭环的能力**。
+三个监测模块均已接入运行闭环：`slave_monitor.c`、`shunt_monitor.c` 由控制线程按 150 ms 分频调用，`soc_estimation.c` 的 `soc_init()`/`soc_update()` 在 `bms_app_start()` 与控制线程中调用，`current_soc` 并已纳入串口遥测。上电时 `bms_config_init()` 先于其余初始化执行，从 Sector 10 载入持久化配置与 SOC。
 
 ### 2.3 保护与状态控制层
 
@@ -128,7 +128,7 @@ DBC 文件位于 `DBC/BMS.dbc` 与 `DBC/IVT.dbc`，是报文字段解释的权�
 
 ### 4.2 上位机串口协议
 
-APP 和 Bootloader 都支持 `USART2`、`USART3`，配置为 **115200 8N1**。帧使用相同的基本封装：
+APP 和 Bootloader 都支持 `USART1`、`USART3`，配置为 **115200 8N1**。帧使用相同的基本封装：
 
 ```text
 B5 4D | version:u8 | type:u8 | sequence:u16 | payload_length:u16 | payload | CRC16/Modbus:u16
@@ -209,9 +209,9 @@ APP 与 Bootloader 是两个独立 CMake 项目，仓库根目录没有总 `CMak
 
 以下内容来自当前源码核对，应在量产或高压联调前明确验证：
 
-- `main.c` 当前将 `sdc_closed` 固定设为 `1`，真实 SDC GPIO 读取代码被注释；因此软件中的 SDC 联锁尚未接入真实输入。
-- `ts_sm_serial_set_manual_air()` 会直接进入手动 AIR 控制分支；函数本身未检查 `ts_state.error` 或 `sdc_closed`。如果系统要求“故障或 SDC 断开时绝不允许手动闭合继电器”，应在固件侧加入强制拒绝/断开条件，不能只依赖上位机 UI。
-- `TS_ERROR_SLAVE_OVERTEMP` 的监测器已存在，但在 `slaves_check()` 中将该错误码并入 `kind` 的语句被注释，因此当前过温不会经这一条路径触发状态机故障。
+- `sdc_closed` 已接入真实输入：`bms_app_start()`/控制线程每拍从 `SDC_VOLTAGE` 引脚读回（`bms_io.c` 初值为 1，可被测试钩子注入覆盖）。
+- `ts_sm_serial_set_manual_air()` 已加安全护栏：故障未清（`ts_state.error != 0`）或 SDC 未闭合时，吸合请求（`enable != 0`）返回 0，上层回 `ACK_REJECTED`；断开分支不拦。
+- `TS_ERROR_SLAVE_OVERTEMP` 已接入：`slaves_check()` 中过温确认后会并入 `kind`，经 `TS_ERROR_SOURCE_SLAVE` 送入状态机。
 - `TOTAL_IC` 为 12，与遥测协议的 12 组 × 12 槽位容量一致（偶数组的第 12 槽位是空位，138 个有效单体）；以遥测中的 `TOTAL_IC` 和有效位图作为当前运行时事实，并在变更硬件串数时同步更新文档。
 - 本文基于静态源码审阅完成，未执行目标板、LTC6804 链路、CAN 总线、高压接触器或升级掉电试验；这些硬件行为仍需台架验证。
 

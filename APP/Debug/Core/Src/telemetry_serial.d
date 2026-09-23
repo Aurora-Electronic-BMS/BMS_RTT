@@ -30,7 +30,7 @@ Core/Src/telemetry_serial.o: ../Core/Src/telemetry_serial.c \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h \
- ../Core/Inc/bms_io.h \
+ ../Core/Inc/bms_config.h ../Core/Inc/bms_io.h \
  ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtthread.h \
  ../RT-Thread/rtconfig.h \
  ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtdebug.h \
@@ -40,7 +40,7 @@ Core/Src/telemetry_serial.o: ../Core/Src/telemetry_serial.c \
  ../Core/Inc/can_custom.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h \
  ../Core/Inc/state_machine.h ../Core/Inc/state_machine_core.h \
- ../Core/Inc/main.h ../Core/Inc/shunt_monitor.h \
+ ../Core/Inc/bms_config.h ../Core/Inc/main.h ../Core/Inc/shunt_monitor.h \
  ../Core/Inc/slave_monitor.h \
  D:/dkt_stm32/DKT/BMS_RTT/APP/Hardware/LTC6804-1/LTC68041.h \
  ../Core/Inc/soc_estimation.h ../Core/Inc/state_machine.h
@@ -75,6 +75,7 @@ Core/Src/telemetry_serial.o: ../Core/Src/telemetry_serial.c \
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h:
+../Core/Inc/bms_config.h:
 ../Core/Inc/bms_io.h:
 ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtthread.h:
 ../RT-Thread/rtconfig.h:
@@ -86,6 +87,7 @@ Core/Src/telemetry_serial.o: ../Core/Src/telemetry_serial.c \
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h:
 ../Core/Inc/state_machine.h:
 ../Core/Inc/state_machine_core.h:
+../Core/Inc/bms_config.h:
 ../Core/Inc/main.h:
 ../Core/Inc/shunt_monitor.h:
 ../Core/Inc/slave_monitor.h:

@@ -1,4 +1,9 @@
-D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:45:12:soc_has_current	16	static
-D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:49:6:soc_init	4	static
-D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:58:6:soc_update	24	static
-D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:103:14:ocv_soc_update	48	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:57:14:clamp_soc	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:69:14:round_soc	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:75:17:soc_to_int	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:82:13:soc_erase_window_safe	8	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:87:13:soc_save	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:103:14:ocv_to_soc	48	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:127:6:soc_update_from_ocv	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:138:6:soc_init	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/soc_estimation.c:156:6:soc_update	16	static

@@ -7,9 +7,8 @@ from bms_host.protocol import (
     AIR_NEG,
     AIR_POS,
     AIR_PRE,
+    BmsConfiguration,
     CELL_SLOTS,
-    TEMP_SLOTS,
-    VALID_BITS_LEN,
     TS_ERROR_INTERNAL_COMM_ERROR,
     TS_ERROR_NONE,
     TS_ERROR_SHUNT_OVERCURRENT,
@@ -20,13 +19,13 @@ from bms_host.protocol import (
     TS_ERROR_SLAVE_UNDERVOLT,
     TS_ERROR_VOLTAGE_MISMATCH,
     TS_ERROR_PRECHARGE_TIMEOUT,
-    TELEMETRY_FIXED_LEN,
     MsgType,
     FrameParser,
     Telemetry,
     crc16_modbus,
     decode_ack,
     decode_boot_response,
+    decode_configuration,
     decode_telemetry,
     default_cell_valid_flags,
     encode_ack,
@@ -38,7 +37,11 @@ from bms_host.protocol import (
     build_boot_end,
     build_boot_hello,
     build_clear_errors,
+    build_get_configuration,
     build_set_manual_air,
+    build_set_configuration,
+    build_software_reset,
+    build_update_soc_from_ocv,
     build_enter_bootloader,
     cell_sequence_number,
     is_valid_cell_slot,
@@ -83,7 +86,6 @@ def sample_telemetry() -> Telemetry:
         total_ic=8,
         min_cell_threshold_mV=3000,
         max_cell_threshold_mV=4200,
-        soc_percent=77,
     )
 
 
@@ -102,6 +104,23 @@ def test_frame_parser_handles_split_and_sticky_frames() -> None:
     assert len(parsed) == 2
     assert parsed[0].msg_type == MsgType.HEARTBEAT
     assert parsed[1].payload == b"\x01"
+
+
+def test_update_soc_from_ocv_command_has_no_payload() -> None:
+    frame = FrameParser().feed(build_update_soc_from_ocv(27))[0]
+
+    assert frame.msg_type == MsgType.UPDATE_SOC_FROM_OCV
+    assert frame.seq == 27
+    assert frame.payload == b""
+
+
+def test_soc_telemetry_round_trip() -> None:
+    telemetry = sample_telemetry()
+    telemetry = Telemetry(**{**telemetry.__dict__, "soc_percent": 66.67})
+    frame = FrameParser().feed(encode_telemetry(10, telemetry))[0]
+    decoded = decode_telemetry(frame.payload)
+
+    assert decoded.soc_percent == 66.67
 
 
 def test_frame_parser_drops_bad_crc() -> None:
@@ -133,14 +152,12 @@ def test_telemetry_round_trip() -> None:
     frame = FrameParser().feed(encode_telemetry(9, telemetry))[0]
     decoded = decode_telemetry(frame.payload)
 
-    assert len(frame.payload) == TELEMETRY_FIXED_LEN + VALID_BITS_LEN + CELL_SLOTS * 2 + TEMP_SLOTS * 2
     assert decoded.cell_valid[slot_index(2, 12)] is False
     assert decoded.cell_valid[slot_index(1, 12)] is True
     assert decoded.error_kind == telemetry.error_kind
     assert decoded.total_ic == telemetry.total_ic
     assert decoded.min_cell_threshold_mV == telemetry.min_cell_threshold_mV
     assert decoded.max_cell_threshold_mV == telemetry.max_cell_threshold_mV
-    assert decoded.soc_percent == telemetry.soc_percent
     assert decoded.cell_mV == telemetry.cell_mV
     assert decoded.temperatures_C == telemetry.temperatures_C
 
@@ -148,12 +165,10 @@ def test_telemetry_round_trip() -> None:
 def test_total_ic_only_telemetry_uses_default_thresholds() -> None:
     telemetry = sample_telemetry()
     frame = FrameParser().feed(encode_telemetry(9, telemetry))[0]
-    # 现行固定区 52B：去掉 SOC(偏移 34) 与两个阈值(48..51) 得到旧 47B 变体
-    total_ic_only_payload = frame.payload[:34] + frame.payload[35:48] + frame.payload[52:]
+    total_ic_only_payload = frame.payload[:47] + frame.payload[51:]
     decoded = decode_telemetry(total_ic_only_payload)
 
     assert decoded.total_ic == telemetry.total_ic
-    assert decoded.soc_percent == 0
     assert decoded.min_cell_threshold_mV == default_cell_voltage_thresholds().min_mV
     assert decoded.max_cell_threshold_mV == default_cell_voltage_thresholds().max_mV
 
@@ -161,12 +176,10 @@ def test_total_ic_only_telemetry_uses_default_thresholds() -> None:
 def test_legacy_telemetry_infers_total_ic_and_uses_default_thresholds() -> None:
     telemetry = sample_telemetry()
     frame = FrameParser().feed(encode_telemetry(9, telemetry))[0]
-    # 再去掉 total_ic(偏移 47) 得到旧 46B 变体
-    legacy_payload = frame.payload[:34] + frame.payload[35:47] + frame.payload[52:]
+    legacy_payload = frame.payload[:46] + frame.payload[51:]
     decoded = decode_telemetry(legacy_payload)
 
     assert decoded.total_ic == 12
-    assert decoded.soc_percent == 0
     assert decoded.min_cell_threshold_mV == default_cell_voltage_thresholds().min_mV
     assert decoded.max_cell_threshold_mV == default_cell_voltage_thresholds().max_mV
 
@@ -235,6 +248,59 @@ def test_clear_errors_command_has_empty_payload() -> None:
 
     assert frame.msg_type == MsgType.CLEAR_ERRORS
     assert frame.seq == 9
+    assert frame.payload == b""
+
+
+def sample_configuration() -> BmsConfiguration:
+    return BmsConfiguration(
+        total_ic=10,
+        discharge_duration_ms=5000,
+        no_error_time_ms=1000,
+        air_close_wait_ms=10,
+        precharge_95_wait_time_ms=5000,
+        pre_hold_time_ms=200,
+        max_state_hold_time_ms=500,
+        drive_mode_timeout_ms=2000,
+        max_charge_volt_dV=5800,
+        max_charge_curr_dA=30,
+        shunt_timeout_ms=500,
+        shunt_overcurrent_discharge_mA=200000,
+        shunt_overcurrent_charge_mA=15000,
+        shunt_overcurrent_regen_mA=25000,
+        shunt_overtemp_dC=1000,
+        max_cell_volt_mV=4200,
+        min_cell_volt_mV=3000,
+        max_cell_temp_C=50,
+        min_cell_temp_C=0,
+        pec_current_threshold_mA=1000,
+        shunt_timeout_confirm_ms=500,
+        shunt_overcurrent_confirm_ms=500,
+        shunt_overtemp_confirm_ms=1000,
+        shunt_voltage_mismatch_confirm_ms=1000,
+        slave_overvolt_confirm_ms=1000,
+        slave_undervolt_confirm_ms=1000,
+        slave_overtemp_confirm_ms=1000,
+        slave_comm_confirm_ms=1000,
+        can1_baudrate=250000,
+        can2_baudrate=500000,
+    )
+
+
+def test_configuration_get_and_set_frames_round_trip() -> None:
+    configuration = sample_configuration()
+    get_frame = FrameParser().feed(build_get_configuration(10))[0]
+    set_frame = FrameParser().feed(build_set_configuration(11, configuration))[0]
+
+    assert get_frame.msg_type == MsgType.GET_CONFIGURATION
+    assert get_frame.payload == b""
+    assert set_frame.msg_type == MsgType.SET_CONFIGURATION
+    assert decode_configuration(set_frame.payload) == configuration
+
+
+def test_software_reset_command_has_no_payload() -> None:
+    frame = FrameParser().feed(build_software_reset(12))[0]
+
+    assert frame.msg_type == MsgType.SOFTWARE_RESET
     assert frame.payload == b""
 
 

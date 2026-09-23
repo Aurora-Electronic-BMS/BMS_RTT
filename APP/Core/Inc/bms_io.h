@@ -38,12 +38,14 @@
  *              避免叠加 SHUNT_TIMEOUT；因此要测超时需停止注入而不是注入 0。
  *   AFE   0x1x：在 slave_monitor 层叠加覆盖 LTC6804 桩件读数，value=-1 撤销。
  *   charge 0x2x：模拟收到充电机 CCS 帧（charge_mode 1s 后自动过期，需重发）。 */
-#define BMS_FI_SHUNT_CURRENT      0x00U   /* i32 mA：< -200000 或 > 55000 触发超流 */
+#define BMS_FI_SHUNT_CURRENT      0x00U   /* i32 mA：超放电/充电阈值见 bms_config 的
+                                           *   shunt_overcurrent_{discharge,charge}_mA */
 #define BMS_FI_SHUNT_VOLTAGE_BAT  0x01U   /* i32 mV：电池侧，参与电压失配/预充判定 */
 #define BMS_FI_SHUNT_VOLTAGE_VEH  0x02U   /* i32 mV：车辆侧，参与预充判定 */
-#define BMS_FI_SHUNT_BUSBAR_TEMP  0x03U   /* i32 0.1℃：> 1000 触发分流器过温 */
+#define BMS_FI_SHUNT_BUSBAR_TEMP  0x03U   /* i32 0.1℃：> bms_config.shunt_overtemp_dC 触发过温 */
 #define BMS_FI_SHUNT_MAX          0x0FU
-#define BMS_FI_AFE_CELL_RAW       0x10U   /* i32 原始 tc 码(mV*10)：> 42000 过压，< 32000 欠压 */
+#define BMS_FI_AFE_CELL_RAW       0x10U   /* i32 原始 tc 码(mV*10)：> max_cell_volt_mV*10 过压，
+                                           *   < min_cell_volt_mV*10 欠压（阈值见 bms_config） */
 #define BMS_FI_AFE_AUX_RAW        0x11U   /* i32 AUX 原始值：经 temp_cal 换算温度 */
 #define BMS_FI_AFE_PEC            0x12U   /* 0=正常 255=坏；坏且电流<-1000mA 触发内部通信错误 */
 #define BMS_FI_AFE_MIN            0x10U

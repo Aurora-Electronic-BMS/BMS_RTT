@@ -13,6 +13,7 @@
  * "载荷先就绪、索引后发布"。
  * ========================================================================== */
 #include "can_custom.h"
+#include "bms_config.h"
 #include "bms_io.h"
 #include "can.h"
 #include "main.h"
@@ -24,6 +25,7 @@
 #include "can-halal.h"
 
 #include <stdint.h>
+#include <math.h>
 
 static ftcan_t bms_can1;
 static ftcan_t bms_can2;
@@ -113,32 +115,34 @@ HAL_StatusTypeDef can_init(void) {
 HAL_StatusTypeDef can_send_status() {
     uint8_t data1[8];
     uint8_t data2[8];
-    uint8_t data3[4];
+    uint8_t data3[8];
     HAL_StatusTypeDef status;
 
     /* 在锁内一次性取一致快照(ts_state/shunt/电芯min-max/Bat_Volt/AIR回读)，
      * 拼完帧立刻解锁——发送是阻塞的，不能持锁 */
     bms_state_lock();
 
-    /* STATUS1: 状态/目标态/SDC 打包 + SOC + min/max 电压 + max 温度 */
+    /* STATUS1: 状态/目标态/SDC 打包 + AIR/POWER_UP 回读与从机/分流错误标志 +
+     *          min/max 电压 + max 温度 */
     data1[0] = ts_state.current_state | (ts_state.target_state << 4) | (sdc_closed << 7);
-    data1[1] = (uint8_t)(current_soc + 0.5f);   /* SOC %，已钳位到 [0,100] */
+    data1[1] = (((bms_in(POS_AIR_CTRL_GPIO_Port, POS_AIR_CTRL_Pin) == GPIO_PIN_SET) ? 1 : 0) << 7)
+               | (((bms_in(NEG_AIR_CTRL_GPIO_Port, NEG_AIR_CTRL_Pin) == GPIO_PIN_SET) ? 1 : 0) << 6)
+               | (((bms_in(PRECHARGE_CTRL_GPIO_Port, PRECHARGE_CTRL_Pin) == GPIO_PIN_SET) ? 1 : 0) << 5)
+               | (((bms_in(POWER_UP_GPIO_Port, POWER_UP_Pin) == GPIO_PIN_SET) ? 1 : 0) << 4)
+               | (slave_error << 3) | (shunt_error << 2);
     ftcan_marshal_unsigned(&data1[2], min_voltage, 2);
     ftcan_marshal_unsigned(&data1[4], max_voltage, 2);
     ftcan_marshal_signed(&data1[6], max_temp, 2);
 
-    /* STATUS2: 电池总压 + AIR/POWER_UP 实际电平位 + 从机/分流错误标志 + 细分错误位图 */
+    /* STATUS2: 电池总压 + SOC(0.01%，u16) + 细分错误位图 */
     ftcan_marshal_signed(&data2[0], Bat_Volt, 4);
-    data2[4] = (((bms_in(POS_AIR_CTRL_GPIO_Port, POS_AIR_CTRL_Pin) == GPIO_PIN_SET) ? 1 : 0) << 7)
-               | (((bms_in(NEG_AIR_CTRL_GPIO_Port, NEG_AIR_CTRL_Pin) == GPIO_PIN_SET) ? 1 : 0) << 6)
-               | (((bms_in(PRECHARGE_CTRL_GPIO_Port, PRECHARGE_CTRL_Pin) == GPIO_PIN_SET) ? 1 : 0) << 5)
-               | (((bms_in(POWER_UP_GPIO_Port, POWER_UP_Pin) == GPIO_PIN_SET) ? 1 : 0) << 4);
-
-    data2[5] = (slave_error << 7) | (shunt_error << 6);
+    uint16_t soc = (uint16_t)lroundf(current_soc * 100.0f);
+    ftcan_marshal_unsigned(&data2[4], soc, 2);
     ftcan_marshal_unsigned(&data2[6], ts_error_kind, 2);
 
-    /* STATUS3: 分流器电流 */
+    /* STATUS3: 分流器电流 + 车辆侧电压 */
     ftcan_marshal_signed(&data3[0], shunt_data.current, 4);
+    ftcan_marshal_signed(&data3[4], shunt_data.voltage_veh, 4);
 
     bms_state_unlock();
 
@@ -157,8 +161,8 @@ HAL_StatusTypeDef can_send_status() {
  * 对齐新版 BMS_SOFTWARE：使能判据取 POWER_UP，而非 CHARGE_ENABLE。 */
 HAL_StatusTypeDef can_send_charge_req() {
     uint8_t data[8] = {0};
-    ftcan_marshal_unsigned(&data[0], MAX_CHARGE_VOLT, 2);
-    ftcan_marshal_unsigned(&data[2], MAX_CHARGE_CURR, 2);
+    ftcan_marshal_unsigned(&data[0], (uint32_t)bms_config.max_charge_volt_dV, 2);
+    ftcan_marshal_unsigned(&data[2], (uint32_t)bms_config.max_charge_curr_dA, 2);
     data[4] = bms_in(POWER_UP_GPIO_Port, POWER_UP_Pin) == GPIO_PIN_SET ? 0 : 1;
     return ftcan_transmit(&bms_can2, CAN_ID_CHARGE_REQ, data, sizeof(data));
 }
@@ -238,7 +242,7 @@ void can_custom_dispatch(const bms_can_msg_t *m) {
 #if BMS_TEST_HOOKS
 /* ---- 回环自测：把合成帧发到回环总线，再经 RX 过滤/分发回来 ----
  * 数值与 AFE 侧对齐：12 个 IC × 138 芯 × 3700 mV → Bat_Volt = 510600 mV，
- * 所以分流器 battery 电压（0x524）也发 510600，电压不一致(阈值 10000)不会误报；
+ * 所以分流器 battery 电压（0x522）也发 510600，电压不一致(阈值 10000)不会误报；
  * 车辆侧电压(0x523)同值，让预充条件(>0.95*电池电压)成立，状态机可走到 ACTIVE。 */
 static int can_selftest_on = 0;
 static uint32_t can_selftest_last = 0;
@@ -269,9 +273,9 @@ void can_custom_selftest_tick(void) {
     ftcan_marshal_signed(&d[0], 2000, 6);
     tx1 = ftcan_transmit(&bms_can1, CAN_ID_SHUNT_CURRENT, d, 6);
 
-    /* CAN1: 电池总压 0x524（U3，新版起电压_bat 取此通道） */
+    /* CAN1: 电池总压 0x522（U1） */
     ftcan_marshal_signed(&d[0], 510600, 6);
-    ftcan_transmit(&bms_can1, CAN_ID_SHUNT_VOLTAGE_3, d, 6);
+    ftcan_transmit(&bms_can1, CAN_ID_SHUNT_VOLTAGE_1, d, 6);
 
     /* CAN1: 车辆侧电压 0x523（沿用上面的 510600，字节未变） */
     ftcan_transmit(&bms_can1, CAN_ID_SHUNT_VOLTAGE_2, d, 6);

@@ -213,11 +213,9 @@ rt_hw_interrupt_thread_switch:
     BX  lr
     NOP
 
-/* 改名避开 Core/Src/stm32f4xx_it.c 的 HardFault_Handler 重名：it.c 那版先做 AIR
-   断电安全动作，再调这里转储现场。CMake 侧传了等价 -D（*.h 未含本文件，无处可定义）。 */
-.global rt_hw_hard_fault_handler
-.type rt_hw_hard_fault_handler, %function
-rt_hw_hard_fault_handler:
+.global HardFault_Handler
+.type HardFault_Handler, %function
+HardFault_Handler:
     /* get current context */
     MRS     r0, msp                 /* get fault context from handler. */
     TST     lr, #0x04               /* if(!EXC_RETURN[2]) */

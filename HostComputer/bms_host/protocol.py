@@ -9,7 +9,7 @@ MAGIC = b"\xB5\x4D"
 VERSION = 1
 MAX_PAYLOAD_LEN = 1024
 BOOT_APP_START = 0x08010000
-BOOT_MAX_IMAGE_SIZE = 0xEFF00
+BOOT_MAX_IMAGE_SIZE = 0xB0000
 BOOT_DATA_SIZE = 256
 
 CELL_GROUPS = 12
@@ -29,11 +29,16 @@ class MsgType(IntEnum):
     TELEMETRY_FULL = 0x01
     ACK = 0x02
     NACK = 0x03
+    CONFIGURATION = 0x04
     SET_TARGET_STATE = 0x10
     SET_MANUAL_AIR = 0x11
     HEARTBEAT = 0x12
     ENTER_BOOTLOADER = 0x13
     CLEAR_ERRORS = 0x14
+    GET_CONFIGURATION = 0x15
+    SET_CONFIGURATION = 0x16
+    UPDATE_SOC_FROM_OCV = 0x17
+    SOFTWARE_RESET = 0x18
     BOOT_HELLO = 0x30
     BOOT_BEGIN = 0x31
     BOOT_DATA = 0x32
@@ -90,19 +95,18 @@ TS_ERROR_PRECHARGE_TIMEOUT = 1 << 9
 
 FRAME_PREFIX_FORMAT = "<BBHH"
 FRAME_PREFIX_LEN = struct.calcsize(FRAME_PREFIX_FORMAT)
-# 固定区布局与固件 telemetry_serial.c 的 build_telemetry 逐字节对齐。
-# 现行版在 busbar_temp 之后插入 1 字节 SOC(%)，固定区长 52 → 总长 454；
-# 下面三种旧长度仅用于解码历史帧，发送一律用现行版。
 TELEMETRY_LEGACY_FIXED_FORMAT = "<IBBIBBBBiiiiiHHhhHH"
 TELEMETRY_TOTAL_IC_FIXED_FORMAT = TELEMETRY_LEGACY_FIXED_FORMAT + "B"
-TELEMETRY_NO_SOC_FIXED_FORMAT = TELEMETRY_TOTAL_IC_FIXED_FORMAT + "HH"
-TELEMETRY_FIXED_FORMAT = "<IBBIBBBBiiiiiBHHhhHHBHH"
+TELEMETRY_FIXED_FORMAT = TELEMETRY_TOTAL_IC_FIXED_FORMAT + "HH"
+TELEMETRY_SOC_FIXED_FORMAT = TELEMETRY_FIXED_FORMAT + "H"
 TELEMETRY_LEGACY_FIXED_LEN = struct.calcsize(TELEMETRY_LEGACY_FIXED_FORMAT)
 TELEMETRY_TOTAL_IC_FIXED_LEN = struct.calcsize(TELEMETRY_TOTAL_IC_FIXED_FORMAT)
-TELEMETRY_NO_SOC_FIXED_LEN = struct.calcsize(TELEMETRY_NO_SOC_FIXED_FORMAT)
 TELEMETRY_FIXED_LEN = struct.calcsize(TELEMETRY_FIXED_FORMAT)
+TELEMETRY_SOC_FIXED_LEN = struct.calcsize(TELEMETRY_SOC_FIXED_FORMAT)
 ACK_FORMAT = "<HBBB"
 BOOT_RESPONSE_FORMAT = "<HBBH"
+CONFIGURATION_FORMAT = "<" + "i" * 30
+CONFIGURATION_SIZE = struct.calcsize(CONFIGURATION_FORMAT)
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,75 @@ class Frame:
     msg_type: int
     seq: int
     payload: bytes
+
+
+@dataclass(frozen=True)
+class BmsConfiguration:
+    total_ic: int
+    discharge_duration_ms: int
+    no_error_time_ms: int
+    air_close_wait_ms: int
+    precharge_95_wait_time_ms: int
+    pre_hold_time_ms: int
+    max_state_hold_time_ms: int
+    drive_mode_timeout_ms: int
+    max_charge_volt_dV: int
+    max_charge_curr_dA: int
+    shunt_timeout_ms: int
+    shunt_overcurrent_discharge_mA: int
+    shunt_overcurrent_charge_mA: int
+    shunt_overcurrent_regen_mA: int
+    shunt_overtemp_dC: int
+    max_cell_volt_mV: int
+    min_cell_volt_mV: int
+    max_cell_temp_C: int
+    min_cell_temp_C: int
+    pec_current_threshold_mA: int
+    shunt_timeout_confirm_ms: int
+    shunt_overcurrent_confirm_ms: int
+    shunt_overtemp_confirm_ms: int
+    shunt_voltage_mismatch_confirm_ms: int
+    slave_overvolt_confirm_ms: int
+    slave_undervolt_confirm_ms: int
+    slave_overtemp_confirm_ms: int
+    slave_comm_confirm_ms: int
+    can1_baudrate: int
+    can2_baudrate: int
+
+    def to_payload(self) -> bytes:
+        return struct.pack(
+            CONFIGURATION_FORMAT,
+            self.total_ic,
+            self.discharge_duration_ms,
+            self.no_error_time_ms,
+            self.air_close_wait_ms,
+            self.precharge_95_wait_time_ms,
+            self.pre_hold_time_ms,
+            self.max_state_hold_time_ms,
+            self.drive_mode_timeout_ms,
+            self.max_charge_volt_dV,
+            self.max_charge_curr_dA,
+            self.shunt_timeout_ms,
+            self.shunt_overcurrent_discharge_mA,
+            self.shunt_overcurrent_charge_mA,
+            self.shunt_overcurrent_regen_mA,
+            self.shunt_overtemp_dC,
+            self.max_cell_volt_mV,
+            self.min_cell_volt_mV,
+            self.max_cell_temp_C,
+            self.min_cell_temp_C,
+            self.pec_current_threshold_mA,
+            self.shunt_timeout_confirm_ms,
+            self.shunt_overcurrent_confirm_ms,
+            self.shunt_overtemp_confirm_ms,
+            self.shunt_voltage_mismatch_confirm_ms,
+            self.slave_overvolt_confirm_ms,
+            self.slave_undervolt_confirm_ms,
+            self.slave_overtemp_confirm_ms,
+            self.slave_comm_confirm_ms,
+            self.can1_baudrate,
+            self.can2_baudrate,
+        )
 
 
 @dataclass(frozen=True)
@@ -137,7 +210,7 @@ class Telemetry:
     total_ic: int = CELL_GROUPS
     min_cell_threshold_mV: int = DEFAULT_MIN_CELL_VOLT_MV
     max_cell_threshold_mV: int = DEFAULT_MAX_CELL_VOLT_MV
-    soc_percent: int = 0
+    soc_percent: float | None = None
 
     @property
     def error_flags(self) -> int:
@@ -292,8 +365,8 @@ def encode_telemetry(seq: int, telemetry: Telemetry) -> bytes:
     if len(telemetry.temperatures_C) != TEMP_SLOTS:
         raise ValueError(f"expected {TEMP_SLOTS} temperatures")
 
-    fixed = struct.pack(
-        TELEMETRY_FIXED_FORMAT,
+    fixed_format = TELEMETRY_SOC_FIXED_FORMAT if telemetry.soc_percent is not None else TELEMETRY_FIXED_FORMAT
+    fixed_fields: tuple[int, ...] = (
         telemetry.uptime_ms,
         telemetry.ts_state,
         telemetry.target_state,
@@ -307,7 +380,6 @@ def encode_telemetry(seq: int, telemetry: Telemetry) -> bytes:
         telemetry.shunt_voltage_veh_mV,
         telemetry.shunt_current_mA,
         telemetry.busbar_temp_dC,
-        max(0, min(int(telemetry.soc_percent), 100)),
         telemetry.min_cell_mV,
         telemetry.max_cell_mV,
         telemetry.min_temp_C,
@@ -318,6 +390,10 @@ def encode_telemetry(seq: int, telemetry: Telemetry) -> bytes:
         telemetry.min_cell_threshold_mV & 0xFFFF,
         telemetry.max_cell_threshold_mV & 0xFFFF,
     )
+    if telemetry.soc_percent is not None:
+        soc_x100 = round(max(0.0, min(100.0, telemetry.soc_percent)) * 100)
+        fixed_fields += (soc_x100,)
+    fixed = struct.pack(fixed_format, *fixed_fields)
     payload = (
         fixed
         + valid_bits_from_slots(telemetry.cell_valid)
@@ -328,29 +404,26 @@ def encode_telemetry(seq: int, telemetry: Telemetry) -> bytes:
 
 
 def decode_telemetry(payload: bytes) -> Telemetry:
-    tail_len = VALID_BITS_LEN + CELL_SLOTS * 2 + TEMP_SLOTS * 2
-    legacy_len = TELEMETRY_LEGACY_FIXED_LEN + tail_len
-    total_ic_len = TELEMETRY_TOTAL_IC_FIXED_LEN + tail_len
-    no_soc_len = TELEMETRY_NO_SOC_FIXED_LEN + tail_len
-    current_len = TELEMETRY_FIXED_LEN + tail_len
-    if len(payload) not in {legacy_len, total_ic_len, no_soc_len, current_len}:
+    legacy_len = TELEMETRY_LEGACY_FIXED_LEN + VALID_BITS_LEN + CELL_SLOTS * 2 + TEMP_SLOTS * 2
+    total_ic_len = TELEMETRY_TOTAL_IC_FIXED_LEN + VALID_BITS_LEN + CELL_SLOTS * 2 + TEMP_SLOTS * 2
+    current_len = TELEMETRY_FIXED_LEN + VALID_BITS_LEN + CELL_SLOTS * 2 + TEMP_SLOTS * 2
+    soc_len = TELEMETRY_SOC_FIXED_LEN + VALID_BITS_LEN + CELL_SLOTS * 2 + TEMP_SLOTS * 2
+    if len(payload) not in {legacy_len, total_ic_len, current_len, soc_len}:
         raise ValueError(f"bad telemetry payload length: {len(payload)}")
 
-    if len(payload) == current_len:
+    if len(payload) == soc_len:
+        fixed_format = TELEMETRY_SOC_FIXED_FORMAT
+        fixed_len = TELEMETRY_SOC_FIXED_LEN
+    elif len(payload) == current_len:
         fixed_format = TELEMETRY_FIXED_FORMAT
         fixed_len = TELEMETRY_FIXED_LEN
-    elif len(payload) == no_soc_len:
-        fixed_format = TELEMETRY_NO_SOC_FIXED_FORMAT
-        fixed_len = TELEMETRY_NO_SOC_FIXED_LEN
     elif len(payload) == total_ic_len:
         fixed_format = TELEMETRY_TOTAL_IC_FIXED_FORMAT
         fixed_len = TELEMETRY_TOTAL_IC_FIXED_LEN
     else:
         fixed_format = TELEMETRY_LEGACY_FIXED_FORMAT
         fixed_len = TELEMETRY_LEGACY_FIXED_LEN
-    values = list(struct.unpack_from(fixed_format, payload, 0))
-    # 现行版在 busbar_temp 之后多一个 SOC 字节；先摘出来，其余字段顺序与旧版一致。
-    soc_percent = values.pop(13) if len(payload) == current_len else 0
+    unpacked = struct.unpack_from(fixed_format, payload, 0)
     (
         uptime_ms,
         ts_state,
@@ -372,7 +445,7 @@ def decode_telemetry(payload: bytes) -> Telemetry:
         cell_slot_count,
         temp_count,
         *optional_config,
-    ) = values
+    ) = unpacked
     if cell_slot_count != CELL_SLOTS or temp_count != TEMP_SLOTS:
         raise ValueError("unexpected telemetry slot counts")
 
@@ -389,6 +462,7 @@ def decode_telemetry(payload: bytes) -> Telemetry:
     if min_cell_threshold_mV >= max_cell_threshold_mV:
         min_cell_threshold_mV = DEFAULT_MIN_CELL_VOLT_MV
         max_cell_threshold_mV = DEFAULT_MAX_CELL_VOLT_MV
+    soc_percent = optional_config[3] / 100.0 if len(optional_config) >= 4 else None
 
     return Telemetry(
         uptime_ms=uptime_ms,
@@ -424,6 +498,22 @@ def build_set_target_state(seq: int, target_state: int | TargetState) -> bytes:
 
 def build_set_manual_air(seq: int, enable: bool, air_bits: int) -> bytes:
     return encode_frame(MsgType.SET_MANUAL_AIR, seq, struct.pack("<BB", int(enable), air_bits & 0x07))
+
+
+def build_update_soc_from_ocv(seq: int) -> bytes:
+    return encode_frame(MsgType.UPDATE_SOC_FROM_OCV, seq, b"")
+
+
+def build_get_configuration(seq: int) -> bytes:
+    return encode_frame(MsgType.GET_CONFIGURATION, seq, b"")
+
+
+def build_set_configuration(seq: int, configuration: BmsConfiguration) -> bytes:
+    return encode_frame(MsgType.SET_CONFIGURATION, seq, configuration.to_payload())
+
+
+def build_software_reset(seq: int) -> bytes:
+    return encode_frame(MsgType.SOFTWARE_RESET, seq, b"")
 
 
 def build_heartbeat(seq: int) -> bytes:
@@ -480,6 +570,14 @@ def decode_boot_response(payload: bytes) -> dict[str, int]:
         "result": result,
         "expected_seq": expected_seq,
     }
+
+
+def decode_configuration(payload: bytes) -> BmsConfiguration:
+    if len(payload) != CONFIGURATION_SIZE:
+        raise ValueError(
+            f"bad configuration payload length: expected {CONFIGURATION_SIZE}, got {len(payload)}"
+        )
+    return BmsConfiguration(*struct.unpack(CONFIGURATION_FORMAT, payload))
 
 
 def encode_ack(seq: int, command_seq: int, command_type: int, result: int, reason: int = 0) -> bytes:

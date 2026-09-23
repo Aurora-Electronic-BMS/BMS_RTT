@@ -1,5 +1,6 @@
-D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:30:6:shunt_init	4	static
-D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:44:6:shunt_clear_errors	8	static
-D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:55:6:shunt_check	16	static
-D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:90:13:shunt_accumulate_current	16	static
-D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:132:6:shunt_handle_can_message	24	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:32:6:shunt_apply_config	4	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:39:6:shunt_init	4	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:53:6:shunt_clear_errors	8	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:64:6:shunt_check	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:99:13:shunt_accumulate_current	16	static
+D:/dkt_stm32/DKT/BMS_RTT/APP/Core/Src/shunt_monitor.c:141:6:shunt_handle_can_message	24	static

@@ -57,20 +57,14 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define POWER_UP_Pin GPIO_PIN_2
-#define POWER_UP_GPIO_Port GPIOE
-#define CHARGE_ENABLE_Pin GPIO_PIN_3
-#define CHARGE_ENABLE_GPIO_Port GPIOE
-#define SDC_VOLTAGE_Pin GPIO_PIN_4
-#define SDC_VOLTAGE_GPIO_Port GPIOE
-#define BMS_ERROR_Pin GPIO_PIN_5
+#define BMS_ERROR_Pin GPIO_PIN_2
 #define BMS_ERROR_GPIO_Port GPIOE
-#define STATUS_6_Pin GPIO_PIN_5
-#define STATUS_6_GPIO_Port GPIOA
-#define STATUS_4_Pin GPIO_PIN_6
-#define STATUS_4_GPIO_Port GPIOA
-#define STATUS_2_Pin GPIO_PIN_7
-#define STATUS_2_GPIO_Port GPIOA
+#define SDC_VOLTAGE_Pin GPIO_PIN_3
+#define SDC_VOLTAGE_GPIO_Port GPIOE
+#define CHARGE_ENABLE_Pin GPIO_PIN_4
+#define CHARGE_ENABLE_GPIO_Port GPIOE
+#define POWER_UP_Pin GPIO_PIN_5
+#define POWER_UP_GPIO_Port GPIOE
 #define HV_MISMATCH_Pin GPIO_PIN_4
 #define HV_MISMATCH_GPIO_Port GPIOC
 #define BMS_NERROR_Pin GPIO_PIN_0
@@ -85,16 +79,22 @@ void Error_Handler(void);
 #define NEG_AIR_CTRL_GPIO_Port GPIOD
 #define POS_AIR_CTRL_Pin GPIO_PIN_11
 #define POS_AIR_CTRL_GPIO_Port GPIOD
+#define STATUS_6_Pin GPIO_PIN_13
+#define STATUS_6_GPIO_Port GPIOD
 #define STATUS_5_Pin GPIO_PIN_14
 #define STATUS_5_GPIO_Port GPIOD
+#define STATUS_4_Pin GPIO_PIN_15
+#define STATUS_4_GPIO_Port GPIOD
 #define STATUS_3_Pin GPIO_PIN_6
 #define STATUS_3_GPIO_Port GPIOC
+#define STATUS_2_Pin GPIO_PIN_7
+#define STATUS_2_GPIO_Port GPIOC
 #define STATUS_1_Pin GPIO_PIN_8
 #define STATUS_1_GPIO_Port GPIOC
-#define SPI3_CS_Pin GPIO_PIN_15
-#define SPI3_CS_GPIO_Port GPIOA
-#define SPI1_CS_Pin GPIO_PIN_7
-#define SPI1_CS_GPIO_Port GPIOD
+#define SPI3_CS_Pin GPIO_PIN_0
+#define SPI3_CS_GPIO_Port GPIOD
+#define SPI1_CS_Pin GPIO_PIN_6
+#define SPI1_CS_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

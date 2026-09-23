@@ -54,11 +54,11 @@ static void bms_log_v(int force, const char *fmt, va_list args) {
         n = (int)sizeof(buf) - 1;   /* vsnprintf 返回"本应写入的长度"，需自行截断 */
     }
     /* 串口还没初始化（Instance 为 NULL）时丢弃早期打印 */
-    if (huart2.Instance == NULL) {
+    if (huart1.Instance == NULL) {
         return;
     }
     bms_tx_lock();
-    HAL_UART_Transmit(&huart2, (const uint8_t *)buf, (uint16_t)n, 200U);
+    HAL_UART_Transmit(&huart1, (const uint8_t *)buf, (uint16_t)n, 200U);
     bms_tx_unlock();
 #endif
 }
@@ -91,31 +91,33 @@ typedef struct {
     uint8_t       injected; /* 输入是否被上位机注入过：注入后固定用注入值，否则回退读真实引脚 */
 } bms_sig_t;
 
-/* 信号表：port/pin 取 BMS_Bare/APP/Core/Inc/main.h 的 STM32F407VGT6 映射
- * （非 APP_test 的 ZG 测试板映射）。本层只记录 level 并打印，不碰寄存器。
+/* 信号表：port/pin 直接取本工程 main.h 的 STM32F407VGT6 映射（与 BMS_V1.0 一致）。
+ * 用宏而非硬编码数字：main.h 一旦调整引脚本表自动跟随，避免再次出现"表与实际引脚
+ * 错位 → 注入落到别的信号上"。bms_in/bms_out 都按 (port,pin) 查表，故宏必须与调用方
+ * 传的宏同源。本层只记录 level 并打印，不碰寄存器。
  * SDC_VOLTAGE 初值 1（默认视为闭合），其余 0。 */
 static bms_sig_t sig_tab[] = {
     /* ---- 输出 ---- */
-    { GPIOB, GPIO_PIN_0,  "BMS_NERROR",   0U, SIG_ID_NONE,          0U },
-    { GPIOE, GPIO_PIN_5,  "BMS_ERROR",    0U, SIG_ID_NONE,          0U },
-    { GPIOE, GPIO_PIN_8,  "ERROR_LED",    0U, SIG_ID_NONE,          0U },
-    { GPIOE, GPIO_PIN_10, "HV_ACTIVE",    0U, SIG_ID_NONE,          0U },
-    { GPIOB, GPIO_PIN_15, "PRECHARGE",    0U, SIG_ID_NONE,          0U },
-    { GPIOD, GPIO_PIN_9,  "NEG_AIR",      0U, SIG_ID_NONE,          0U },
-    { GPIOD, GPIO_PIN_11, "POS_AIR",      0U, SIG_ID_NONE,          0U },
-    { GPIOC, GPIO_PIN_4,  "HV_MISMATCH",  0U, SIG_ID_NONE,          0U },
-    { GPIOC, GPIO_PIN_8,  "STATUS_1",     0U, SIG_ID_NONE,          0U },
-    { GPIOA, GPIO_PIN_7,  "STATUS_2",     0U, SIG_ID_NONE,          0U },
-    { GPIOC, GPIO_PIN_6,  "STATUS_3",     0U, SIG_ID_NONE,          0U },
-    { GPIOA, GPIO_PIN_6,  "STATUS_4",     0U, SIG_ID_NONE,          0U },
-    { GPIOD, GPIO_PIN_14, "STATUS_5",     0U, SIG_ID_NONE,          0U },
-    { GPIOA, GPIO_PIN_5,  "STATUS_6",     0U, SIG_ID_NONE,          0U },
-    { GPIOD, GPIO_PIN_7,  "SPI1_CS",      0U, SIG_ID_NONE,          0U },
-    { GPIOA, GPIO_PIN_15, "SPI3_CS",      0U, SIG_ID_NONE,          0U },
+    { BMS_NERROR_GPIO_Port,     BMS_NERROR_Pin,     "BMS_NERROR",   0U, SIG_ID_NONE,          0U },
+    { BMS_ERROR_GPIO_Port,      BMS_ERROR_Pin,      "BMS_ERROR",    0U, SIG_ID_NONE,          0U },
+    { ERROR_LED_GPIO_Port,      ERROR_LED_Pin,      "ERROR_LED",    0U, SIG_ID_NONE,          0U },
+    { HV_ACTIVE_GPIO_Port,      HV_ACTIVE_Pin,      "HV_ACTIVE",    0U, SIG_ID_NONE,          0U },
+    { PRECHARGE_CTRL_GPIO_Port, PRECHARGE_CTRL_Pin, "PRECHARGE",    0U, SIG_ID_NONE,          0U },
+    { NEG_AIR_CTRL_GPIO_Port,   NEG_AIR_CTRL_Pin,   "NEG_AIR",      0U, SIG_ID_NONE,          0U },
+    { POS_AIR_CTRL_GPIO_Port,   POS_AIR_CTRL_Pin,   "POS_AIR",      0U, SIG_ID_NONE,          0U },
+    { HV_MISMATCH_GPIO_Port,    HV_MISMATCH_Pin,    "HV_MISMATCH",  0U, SIG_ID_NONE,          0U },
+    { STATUS_1_GPIO_Port,       STATUS_1_Pin,       "STATUS_1",     0U, SIG_ID_NONE,          0U },
+    { STATUS_2_GPIO_Port,       STATUS_2_Pin,       "STATUS_2",     0U, SIG_ID_NONE,          0U },
+    { STATUS_3_GPIO_Port,       STATUS_3_Pin,       "STATUS_3",     0U, SIG_ID_NONE,          0U },
+    { STATUS_4_GPIO_Port,       STATUS_4_Pin,       "STATUS_4",     0U, SIG_ID_NONE,          0U },
+    { STATUS_5_GPIO_Port,       STATUS_5_Pin,       "STATUS_5",     0U, SIG_ID_NONE,          0U },
+    { STATUS_6_GPIO_Port,       STATUS_6_Pin,       "STATUS_6",     0U, SIG_ID_NONE,          0U },
+    { SPI1_CS_GPIO_Port,        SPI1_CS_Pin,        "SPI1_CS",      0U, SIG_ID_NONE,          0U },
+    { SPI3_CS_GPIO_Port,        SPI3_CS_Pin,        "SPI3_CS",      0U, SIG_ID_NONE,          0U },
     /* ---- 输入（可注入）---- */
-    { GPIOE, GPIO_PIN_2,  "POWER_UP",      1U, BMS_SIG_POWER_UP,      0U },
-    { GPIOE, GPIO_PIN_3,  "CHARGE_ENABLE", 1U, BMS_SIG_CHARGE_ENABLE, 0U },
-    { GPIOE, GPIO_PIN_4,  "SDC_VOLTAGE",   1U, BMS_SIG_SDC_VOLTAGE,   1U },
+    { POWER_UP_GPIO_Port,      POWER_UP_Pin,      "POWER_UP",      1U, BMS_SIG_POWER_UP,      0U },
+    { CHARGE_ENABLE_GPIO_Port, CHARGE_ENABLE_Pin, "CHARGE_ENABLE", 1U, BMS_SIG_CHARGE_ENABLE, 0U },
+    { SDC_VOLTAGE_GPIO_Port,   SDC_VOLTAGE_Pin,   "SDC_VOLTAGE",   1U, BMS_SIG_SDC_VOLTAGE,   1U },
 };
 
 #define SIG_COUNT (sizeof(sig_tab) / sizeof(sig_tab[0]))

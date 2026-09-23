@@ -206,15 +206,16 @@ void bms_app_start(void) {
     soc_init();
     ts_sm_init();
 
-    /* 收窄 CAN/UART 中断优先级(覆盖 CubeMX 生成的 0)：避免消息风暴时
-     * 长时间压住 SysTick(最低优先级)导致 RT-Thread 调度停摆 */
+    /* 收窄 CAN/UART 中断优先级(覆盖 MspInit/CubeMX 生成的 0)：避免消息风暴时
+     * 长时间压住 SysTick(最低优先级)导致 RT-Thread 调度停摆；也保证中断里能安全
+     * 调 rt_sem_release（抢占优先级须不高于 RT_MAX_SYSCALL_INTERRUPT_PRIORITY）。 */
     HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 5, 0);
     HAL_NVIC_SetPriority(CAN2_RX0_IRQn, 5, 0);
-    HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
+    HAL_NVIC_SetPriority(USART1_IRQn, 5, 0);
     HAL_NVIC_SetPriority(USART3_IRQn, 5, 0);
 
     /* 两个串口都能跑 B5 4D 协议(含 0x13 重入升级) */
-    telemetry_serial_init(&huart2, &huart3);
+    telemetry_serial_init(&huart1, &huart3);
 
     /* 真 AFE 的 set_adc() 在此配 ADCV/ADAX 命令字节，漏掉则转换读回来全是垃圾。
      * 桩件版的 LTC6804_initialize() 是空函数，两边共用同一次调用。 */

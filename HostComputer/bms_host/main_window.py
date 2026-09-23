@@ -4,14 +4,17 @@ from datetime import datetime
 from pathlib import Path
 import time
 
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFrame,
+    QFormLayout,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -21,6 +24,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QSizePolicy,
     QSplitter,
     QStyle,
@@ -37,7 +41,9 @@ from .protocol import (
     AIR_PRE,
     CELL_CHANNELS,
     CELL_GROUPS,
+    BmsConfiguration,
     ControlMode,
+    MsgType,
     TEMP_CHANNELS,
     TEMP_GROUPS,
     TS_ERROR_INTERNAL_COMM_ERROR,
@@ -84,17 +90,70 @@ ERROR_KIND_NAMES = {
 
 MANUAL_AIR_PASSWORD = "sztu"
 NO_COMM_CELL_MV = 65535
+CC_FONT_SIZE_PX = 30
+
+
+CONFIGURATION_FIELDS = (
+    ("Pack", "total_ic", "TOTAL_IC", 1, 12),
+    ("State machine", "discharge_duration_ms", "Discharge duration (ms)", 0, 300000),
+    ("State machine", "no_error_time_ms", "No-error time (ms)", 0, 300000),
+    ("State machine", "air_close_wait_ms", "AIR close wait (ms)", 0, 10000),
+    ("State machine", "precharge_95_wait_time_ms", "Precharge 95% timeout (ms)", 1, 300000),
+    ("State machine", "pre_hold_time_ms", "Pre-hold time (ms)", 0, 60000),
+    ("State machine", "max_state_hold_time_ms", "Max state hold (ms)", 0, 60000),
+    ("State machine", "drive_mode_timeout_ms", "Drive-mode timeout (ms)", 1, 300000),
+    ("State machine", "max_charge_volt_dV", "Max charge voltage (0.1 V)", 0, 10000),
+    ("State machine", "max_charge_curr_dA", "Max charge current (0.1 A)", 0, 50000),
+    ("Shunt", "shunt_timeout_ms", "Shunt timeout (ms)", 1, 60000),
+    ("Shunt", "shunt_overcurrent_discharge_mA", "Discharge overcurrent (mA)", 0, 1000000),
+    ("Shunt", "shunt_overcurrent_charge_mA", "Charge overcurrent (mA)", 0, 1000000),
+    ("Shunt", "shunt_overcurrent_regen_mA", "Regen overcurrent (mA)", 0, 1000000),
+    ("Shunt", "shunt_overtemp_dC", "Shunt overtemperature (0.1 C)", -500, 2000),
+    ("Cell", "max_cell_volt_mV", "Max cell voltage (mV)", 2500, 5000),
+    ("Cell", "min_cell_volt_mV", "Min cell voltage (mV)", 1500, 4500),
+    ("Cell", "max_cell_temp_C", "Max cell temperature (C)", -40, 120),
+    ("Cell", "min_cell_temp_C", "Min cell temperature (C)", -40, 100),
+    ("Cell", "pec_current_threshold_mA", "PEC current threshold (mA)", 0, 1000000),
+    ("ErrorMonitor delays", "shunt_timeout_confirm_ms", "Shunt timeout confirmation (ms)", 0, 600000),
+    ("ErrorMonitor delays", "shunt_overcurrent_confirm_ms", "Shunt overcurrent confirmation (ms)", 0, 600000),
+    ("ErrorMonitor delays", "shunt_overtemp_confirm_ms", "Shunt overtemperature confirmation (ms)", 0, 600000),
+    ("ErrorMonitor delays", "shunt_voltage_mismatch_confirm_ms", "Voltage mismatch confirmation (ms)", 0, 600000),
+    ("ErrorMonitor delays", "slave_overvolt_confirm_ms", "Cell overvoltage confirmation (ms)", 0, 600000),
+    ("ErrorMonitor delays", "slave_undervolt_confirm_ms", "Cell undervoltage confirmation (ms)", 0, 600000),
+    ("ErrorMonitor delays", "slave_overtemp_confirm_ms", "Cell overtemperature confirmation (ms)", 0, 600000),
+    ("ErrorMonitor delays", "slave_comm_confirm_ms", "Cell communication confirmation (ms)", 0, 600000),
+)
+
+CAN_BAUDRATE_FIELDS = (
+    ("can1_baudrate", "CAN1 baud rate"),
+    ("can2_baudrate", "CAN2 baud rate"),
+)
+CAN_BAUDRATE_OPTIONS = (
+    ("250 kbit/s", 250000),
+    ("500 kbit/s", 500000),
+)
+
+
+class ClickableLabel(QLabel):
+    clicked = pyqtSignal()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
 
 
 class MetricTile(QFrame):
-    def __init__(self, title: str) -> None:
+    def __init__(self, title: str, title_click_handler=None) -> None:
         super().__init__()
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setObjectName("metricTile")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
-        self.title = QLabel(title)
+        self.title = ClickableLabel(title) if title_click_handler is not None else QLabel(title)
         self.title.setObjectName("metricTitle")
+        if title_click_handler is not None:
+            self.title.clicked.connect(title_click_handler)
         self.value = QLabel("--")
         self.value.setObjectName("metricValue")
         self.value.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -103,6 +162,102 @@ class MetricTile(QFrame):
 
     def set_value(self, text: str) -> None:
         self.value.setText(text)
+
+
+class ConfigurationSpinBox(QSpinBox):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setMinimumHeight(30)
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.setStyleSheet(
+            """
+            QSpinBox {
+                background: #FFFFFF;
+                border: 1px solid #C7C7CC;
+                border-radius: 10px;
+                padding: 0 12px;
+            }
+            QSpinBox:focus {
+                border: 2px solid #0A84FF;
+                padding: 0 11px;
+            }
+            """
+        )
+
+    def wheelEvent(self, event) -> None:
+        # 配置参数只能通过键盘输入调整，避免滚轮误改。
+        event.ignore()
+
+
+class ConfigurationDialog(QDialog):
+    def __init__(self, configuration: BmsConfiguration, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("BMS Configuration")
+        self.setMinimumWidth(610)
+        self._inputs: dict[str, ConfigurationSpinBox] = {}
+        self._baudrate_inputs: dict[str, QComboBox] = {}
+
+        layout = QVBoxLayout(self)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
+
+        forms: dict[str, QFormLayout] = {}
+        for group_name, field_name, label, minimum, maximum in CONFIGURATION_FIELDS:
+            form = forms.get(group_name)
+            if form is None:
+                group_box = QGroupBox(group_name)
+                form = QFormLayout(group_box)
+                form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+                form.setLabelAlignment(
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                )
+                forms[group_name] = form
+                content_layout.addWidget(group_box)
+            input_box = ConfigurationSpinBox()
+            input_box.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+            input_box.setRange(minimum, maximum)
+            input_box.setValue(getattr(configuration, field_name))
+            self._inputs[field_name] = input_box
+            form.addRow(label, input_box)
+
+        can_group = QGroupBox("CAN")
+        can_form = QFormLayout(can_group)
+        can_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        can_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        for field_name, label in CAN_BAUDRATE_FIELDS:
+            combo = QComboBox()
+            combo.setMinimumHeight(30)
+            for option_label, baudrate in CAN_BAUDRATE_OPTIONS:
+                combo.addItem(option_label, baudrate)
+            option_index = combo.findData(getattr(configuration, field_name))
+            combo.setCurrentIndex(max(option_index, 0))
+            self._baudrate_inputs[field_name] = combo
+            can_form.addRow(label, combo)
+        content_layout.insertWidget(0, can_group)
+
+        content_layout.addStretch(1)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def configuration(self) -> BmsConfiguration:
+        values = {
+            field_name: input_box.value()
+            for field_name, input_box in self._inputs.items()
+        }
+        values.update({
+            field_name: int(combo.currentData())
+            for field_name, combo in self._baudrate_inputs.items()
+        })
+        return BmsConfiguration(**values)
 
 
 class MainWindow(QMainWindow):
@@ -123,6 +278,9 @@ class MainWindow(QMainWindow):
         self.metrics: dict[str, MetricTile] = {}
         self.target_buttons: list[QPushButton] = []
         self.cell_voltage_thresholds: CellVoltageThresholds = default_cell_voltage_thresholds()
+        self.latest_configuration: BmsConfiguration | None = None
+        self._configuration_dialog_requested = False
+        self._can_baudrate_change_pending = False
 
         self._build_ui()
         self._apply_styles()
@@ -142,6 +300,7 @@ class MainWindow(QMainWindow):
             self.connect_button.setEnabled(False)
             self.disconnect_button.setEnabled(False)
             self._set_bms_controls_enabled(False)
+            self.configuration_button.setEnabled(True)
             self.sim_timer = QTimer(self)
             self.sim_timer.timeout.connect(self._sample_simulator)
             self.sim_timer.start(200)
@@ -164,7 +323,7 @@ class MainWindow(QMainWindow):
         splitter = QSplitter()
         splitter.setChildrenCollapsible(False)
         splitter.addWidget(self._build_data_tabs())
-        splitter.addWidget(self._build_side_panel())
+        splitter.addWidget(self._scrollable(self._build_side_panel()))
         splitter.setSizes([1120, 330])
         splitter.setStretchFactor(0, 1)
         root_layout.addWidget(splitter, 1)
@@ -186,6 +345,9 @@ class MainWindow(QMainWindow):
         self.firmware_upgrade_button = QPushButton("Firmware Upgrade")
         self.firmware_upgrade_button.clicked.connect(self._start_firmware_upgrade)
         self.firmware_upgrade_button.setEnabled(False)
+        self.configuration_button = QPushButton("Configuration")
+        self.configuration_button.clicked.connect(self._open_configuration)
+        self.configuration_button.setEnabled(False)
         self.clear_errors_button = QPushButton("Clear Faults")
         self.clear_errors_button.clicked.connect(self._clear_errors)
         self.clear_errors_button.setEnabled(False)
@@ -195,11 +357,18 @@ class MainWindow(QMainWindow):
         self.log_path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.log_path_label.setMinimumWidth(0)
         self.log_path_label.setSizePolicy(
-            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Preferred,
         )
         self.status_label = QLabel("Disconnected")
         self.status_label.setObjectName("statusLabel")
+        self.cc_label = QLabel("@cc")
+        cc_font = QFont(self.cc_label.font())
+        cc_font.setBold(True)
+        cc_font.setItalic(True)
+        cc_font.setUnderline(True)
+        self.cc_label.setFont(cc_font)
+        self.cc_label.setStyleSheet(f"font-size: {CC_FONT_SIZE_PX}px;")
 
         layout.addWidget(QLabel("Port"))
         layout.addWidget(self.port_combo)
@@ -207,11 +376,15 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.connect_button)
         layout.addWidget(self.disconnect_button)
         layout.addWidget(self.firmware_upgrade_button)
+        layout.addWidget(self.configuration_button)
         layout.addWidget(self.clear_errors_button)
         layout.addSpacing(16)
         layout.addWidget(self.log_checkbox)
-        layout.addWidget(self.log_path_label, 1)
+        layout.addWidget(self.log_path_label)
+        layout.addSpacing(16)
         layout.addWidget(self.status_label)
+        layout.addStretch(1)
+        layout.addWidget(self.cc_label)
         return bar
 
     def _build_metrics(self) -> QHBoxLayout:
@@ -227,7 +400,7 @@ class MainWindow(QMainWindow):
             ("max_temp", "Max Temp"),
             ("state", "State"),
         ]:
-            tile = MetricTile(title)
+            tile = MetricTile(title, self._confirm_soc_update if key == "soc" else None)
             self.metrics[key] = tile
             layout.addWidget(tile)
         return layout
@@ -394,6 +567,7 @@ class MainWindow(QMainWindow):
         self.frame_times.clear()
         self.worker = SerialWorker(port)
         self.worker.telemetry_received.connect(self._handle_telemetry)
+        self.worker.configuration_received.connect(self._handle_configuration)
         self.worker.ack_received.connect(self._handle_ack)
         self.worker.status_changed.connect(self._handle_status)
         self.worker.error.connect(self._handle_error)
@@ -411,6 +585,7 @@ class MainWindow(QMainWindow):
         self.connect_button.setEnabled(self.simulator is None)
         self.disconnect_button.setEnabled(False)
         self.firmware_upgrade_button.setEnabled(False)
+        self.configuration_button.setEnabled(False)
         self._set_bms_controls_enabled(False)
 
     def _sample_simulator(self) -> None:
@@ -424,7 +599,9 @@ class MainWindow(QMainWindow):
         self.metrics["pack"].set_value(f"{telemetry.pack_voltage_mV / 1000:.3f} V")
         self.metrics["bus"].set_value(f"{telemetry.shunt_voltage_veh_mV / 1000:.3f} V")
         self.metrics["current"].set_value(f"{telemetry.shunt_current_mA / 1000:.2f} A")
-        self.metrics["soc"].set_value(f"{telemetry.soc_percent} %")
+        self.metrics["soc"].set_value(
+            "--" if telemetry.soc_percent is None else f"{telemetry.soc_percent:.2f} %"
+        )
         self.metrics["min_cell"].set_value(f"{telemetry.min_cell_mV / 1000:.3f} V")
         self.metrics["max_cell"].set_value(f"{telemetry.max_cell_mV / 1000:.3f} V")
         self.metrics["min_temp"].set_value(f"{telemetry.min_temp_C} C")
@@ -598,6 +775,59 @@ class MainWindow(QMainWindow):
         self.worker.send_clear_errors()
         self.message_label.setText("Clear-fault command sent.")
 
+    def _confirm_soc_update(self) -> None:
+        answer = QMessageBox.question(
+            self,
+            "Update SOC?",
+            "Update SOC?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if not self.bms_connected or self.worker is None:
+            self.message_label.setText("Connect BMS before updating SOC.")
+            return
+        self.worker.update_soc_from_ocv()
+        self.message_label.setText("SOC update command sent.")
+
+    def _open_configuration(self) -> None:
+        if self.simulator is not None:
+            self._configuration_dialog_requested = True
+            self._handle_configuration(self.simulator.configuration)
+            return
+        if not self.bms_connected or self.worker is None:
+            self.message_label.setText("Connect BMS before opening configuration.")
+            return
+        self._configuration_dialog_requested = True
+        self.worker.request_configuration()
+        self.message_label.setText("Reading configuration from BMS…")
+
+    def _handle_configuration(self, configuration: BmsConfiguration) -> None:
+        self.latest_configuration = configuration
+        if not self._configuration_dialog_requested:
+            return
+        self._configuration_dialog_requested = False
+        dialog = ConfigurationDialog(configuration, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.message_label.setText("Configuration unchanged.")
+            return
+        if self.simulator is not None:
+            self.simulator.save_configuration(dialog.configuration())
+            self.latest_configuration = self.simulator.configuration
+            self.message_label.setText("Configuration saved for this simulation session.")
+            return
+        if self.worker is None or not self.bms_connected:
+            self.message_label.setText("BMS disconnected before configuration could be saved.")
+            return
+        updated_configuration = dialog.configuration()
+        self._can_baudrate_change_pending = (
+            updated_configuration.can1_baudrate != configuration.can1_baudrate
+            or updated_configuration.can2_baudrate != configuration.can2_baudrate
+        )
+        self.worker.save_configuration(updated_configuration)
+        self.message_label.setText("Saving configuration to BMS Flash…")
+
     def _apply_manual_air(self) -> None:
         if not self._manual_enabled():
             return
@@ -650,6 +880,7 @@ class MainWindow(QMainWindow):
         for button in self.target_buttons:
             button.setEnabled(connected)
         self.clear_errors_button.setEnabled(connected)
+        self.configuration_button.setEnabled(connected)
         self.manual_unlock.setEnabled(connected)
         if not connected:
             self.manual_unlock.blockSignals(True)
@@ -769,6 +1000,33 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Firmware Upgrade", message)
 
     def _handle_ack(self, ack: dict[str, int]) -> None:
+        if ack["command_type"] == MsgType.UPDATE_SOC_FROM_OCV:
+            if ack["result"] == 0:
+                self.message_label.setText("SOC updated from the minimum cell voltage and saved to BMS Flash.")
+            else:
+                self.message_label.setText("SOC update was rejected: no valid cell voltage or Flash save failed.")
+            return
+        if ack["command_type"] == MsgType.SET_CONFIGURATION:
+            if ack["result"] == 0:
+                if getattr(self, "_can_baudrate_change_pending", False):
+                    if self.worker is not None and self.bms_connected:
+                        self.worker.request_software_reset()
+                    self.message_label.setText(
+                        "Configuration saved. Software reset requested to apply the CAN baud-rate change."
+                    )
+                else:
+                    self.message_label.setText("Configuration saved to BMS Flash.")
+                self._can_baudrate_change_pending = False
+            else:
+                reasons = {
+                    1: "BMS must be INACTIVE with all AIR relays open.",
+                    2: "One or more values are outside the safe range.",
+                    3: "Internal Flash write or verification failed.",
+                }
+                self.message_label.setText(
+                    f"Configuration was rejected: {reasons.get(ack['reason'], 'unknown reason')}"
+                )
+            return
         self.message_label.setText(
             f"ACK cmd=0x{ack['command_type']:02X} result={ack['result']} reason={ack['reason']}"
         )
@@ -781,10 +1039,13 @@ class MainWindow(QMainWindow):
             self.connect_button.setEnabled(self.simulator is None)
             self.disconnect_button.setEnabled(False)
             self.firmware_upgrade_button.setEnabled(False)
+            self.configuration_button.setEnabled(False)
             self._set_bms_controls_enabled(False)
         elif status.startswith("Connected:"):
             self.firmware_upgrade_button.setEnabled(True)
             self._set_bms_controls_enabled(True)
+            if self.worker is not None:
+                self.worker.request_configuration()
 
     def _handle_error(self, message: str) -> None:
         self.message_label.setText(message)
@@ -905,6 +1166,23 @@ class MainWindow(QMainWindow):
             }
             QPushButton {
                 min-height: 28px;
+                padding: 0 10px;
+                border: 1px solid palette(mid);
+                border-radius: 6px;
+                background-color: palette(button);
+                color: palette(button-text);
+            }
+            QPushButton:hover {
+                border-color: palette(highlight);
+            }
+            QPushButton:pressed {
+                background-color: palette(midlight);
+            }
+            QPushButton:focus {
+                border-color: palette(highlight);
+            }
+            QPushButton:disabled {
+                color: palette(mid);
             }
             """
         )

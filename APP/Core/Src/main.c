@@ -26,6 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "bms_io.h"
+#include "bms_config.h"
 #include "can_custom.h"
 #include "shunt_monitor.h"
 #include "slave_monitor.h"
@@ -71,6 +72,31 @@ void bms_app_start(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/* CAN 波特率取自 bms_config，覆盖 MX_CANx_Init 里 CubeMX 生成的固定预分频。
+ * 位时间分段固定 BS1=13TQ/BS2=2TQ/SJW=1TQ（共 16TQ），速率只由预分频决定：
+ * PCLK1 32MHz/(16×4)=500k、/(16×8)=250k，仅支持配置校验过的两档。
+ * 放在 USER CODE 区而非 can.c 的生成区：重新生成会覆盖那边的手改。
+ * 改波特率需重启后生效（不做热切换）。 */
+static void can_apply_config_baudrate(void)
+{
+  uint32_t want1 = (bms_config.can1_baudrate == 250000) ? 8U : 4U;
+  uint32_t want2 = (bms_config.can2_baudrate == 250000) ? 8U : 4U;
+
+  /* 只在与生成值不同时重跑 HAL_CAN_Init（State==READY 会跳过 MspInit，安全） */
+  if (hcan1.Init.Prescaler != want1) {
+    hcan1.Init.Prescaler = want1;
+    if (HAL_CAN_Init(&hcan1) != HAL_OK) {
+      Error_Handler();
+    }
+  }
+  if (hcan2.Init.Prescaler != want2) {
+    hcan2.Init.Prescaler = want2;
+    if (HAL_CAN_Init(&hcan2) != HAL_OK) {
+      Error_Handler();
+    }
+  }
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -103,6 +129,14 @@ int main(void)
   SysTick->LOAD = (uint32_t)(SystemCoreClock / RT_TICK_PER_SECOND) - 1UL;
   SysTick->VAL  = 0UL;
   SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk;
+
+  /* 配置必须先于 CAN 初始化：can_apply_config_baudrate 的预分频取自 bms_config 的
+   * 波特率，且 bms_config_init 内部会按配置刷新分流器/AFE 的阈值与去抖时间，并置
+   * flash_layout_ready（决定 SOC/配置能否落盘）。漏掉这一句时 bms_config 恒为 0（BSS）、
+   * 8 个监视器 delay_ms=0，上电首拍即判故障 → 恒 TS_ERROR、AIR 不闭合。
+   * 放在 USER CODE 区（而非生成区）以免 CubeMX 重新生成时丢失；与裸机版同序
+   * （BMS_Bare main.c:128-131）。 */
+  bms_config_init();
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -112,8 +146,10 @@ int main(void)
   MX_SPI1_Init();
   MX_SPI3_Init();
   MX_USART3_UART_Init();
-  MX_USART2_UART_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  /* CAN 外设已就绪，按 bms_config 覆盖生成时的缺省波特率（配置在 SysInit 已加载）。 */
+  can_apply_config_baudrate();
   /* 启动 BMS 应用：CAN 过滤器/缓冲、状态机、双口遥测(含 0x13 重入)，
    * 并创建 can_rx / ctrl / telemetry 三个线程。 */
   bms_app_start();

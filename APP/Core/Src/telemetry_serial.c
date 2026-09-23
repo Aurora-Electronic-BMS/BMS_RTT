@@ -5,7 +5,7 @@
  *   MAGIC0(0xB5) MAGIC1(0x4D) VER(1) MSG_TYPE(1) SEQ(u16) LEN(u16) DATA[LEN] CRC16(u16)
  *   CRC16-Modbus 覆盖 [VER..DATA]（从 VER 字节起到载荷末）。
  *
- * 两个串口（USART2、USART3）都能跑本协议。链接模型：**同一时刻只认一个"上位机口"**
+ * 两个串口都能跑本协议。链接模型：**同一时刻只认一个"上位机口"**
  *   —— 收到某口的有效帧时，若当前无活跃上位机则切到该口；已有活跃上位机则忽略别口的帧。
  *   MSG_HEARTBEAT 置 bms_host_active=1 并刷新 last_host_heartbeat；超过 LINK_TIMEOUT
  *   无心跳即判链路断开（bms_host_active=0、telemetry_uart=0）。活跃期间 bms_log 静默。
@@ -20,6 +20,7 @@
  *     不调用 wait_next（该函数不参与裸机编译）。
  * ========================================================================== */
 #include "telemetry_serial.h"
+#include "bms_config.h"
 #include "bms_io.h"
 #include "can_custom.h"
 #include "main.h"
@@ -48,11 +49,16 @@
 
 #define MSG_TELEMETRY_FULL 0x01U
 #define MSG_ACK 0x02U
+#define MSG_CONFIGURATION 0x04U
 #define MSG_SET_TARGET_STATE 0x10U
 #define MSG_SET_MANUAL_AIR 0x11U
 #define MSG_HEARTBEAT 0x12U
 #define MSG_ENTER_BOOTLOADER 0x13U
 #define MSG_CLEAR_ERRORS 0x14U
+#define MSG_GET_CONFIGURATION 0x15U
+#define MSG_SET_CONFIGURATION 0x16U
+#define MSG_UPDATE_SOC_FROM_OCV 0x17U
+#define MSG_SOFTWARE_RESET 0x18U
 #define MSG_SET_INPUT 0x20U
 #define MSG_DUMP_IO 0x21U
 #define MSG_CAN_SELFTEST 0x22U
@@ -71,7 +77,7 @@
 #define TEMP_CHANNELS 4U
 #define TEMP_SLOTS (TEMP_GROUPS * TEMP_CHANNELS)
 #define VALID_BITS_LEN ((CELL_SLOTS + 7U) / 8U)
-#define TELEMETRY_FIXED_LEN 52U
+#define TELEMETRY_FIXED_LEN 53U
 #define TELEMETRY_PAYLOAD_LEN (TELEMETRY_FIXED_LEN + VALID_BITS_LEN + CELL_SLOTS * 2U + TEMP_SLOTS * 2U)
 
 /* 单个串口的收帧状态。frame_buf 预留 2 字节 MAGIC + 前缀 + 最大载荷 + 2 字节 CRC。 */
@@ -117,7 +123,10 @@ static void put_i16(uint8_t *payload, uint16_t *offset, int16_t value);
 static void put_u32(uint8_t *payload, uint16_t *offset, uint32_t value);
 static void put_i32(uint8_t *payload, uint16_t *offset, int32_t value);
 static uint16_t get_u16(const uint8_t *data);
-static int32_t get_i32(const uint8_t *data);
+static uint32_t get_u32(const uint8_t *data);
+static void send_configuration(void);
+static int decode_configuration(const uint8_t *payload, uint16_t payload_len, BmsConfig *config);
+static void request_software_reset(void) __attribute__((noreturn));
 
 /* 初始化两个串口：建信号量（RTT）、登记 uart、复位索引，并对每个口开逐字节接收中断。 */
 void telemetry_serial_init(UART_HandleTypeDef *uart1, UART_HandleTypeDef *uart2) {
@@ -246,23 +255,23 @@ void telemetry_serial_send_periodic(void) {
     put_i32(payload, &offset, shunt_data.voltage_veh);
     put_i32(payload, &offset, shunt_data.current);
     put_i32(payload, &offset, shunt_data.busbartemp);
-    put_u8(payload, &offset, (uint8_t)(current_soc + 0.5f));   /* SOC %，钳位已保证 0..100 */
     put_u16(payload, &offset, min_voltage);
     put_u16(payload, &offset, max_voltage);
     put_i16(payload, &offset, min_temp);
     put_i16(payload, &offset, max_temp);
     put_u16(payload, &offset, CELL_SLOTS);
     put_u16(payload, &offset, TEMP_SLOTS);
-    put_u8(payload, &offset, TOTAL_IC);
-    put_u16(payload, &offset, MIN_CELL_VOLT);
-    put_u16(payload, &offset, MAX_CELL_VOLT);
+    put_u8(payload, &offset, (uint8_t)bms_config.total_ic);
+    put_u16(payload, &offset, (uint16_t)bms_config.min_cell_volt_mV);
+    put_u16(payload, &offset, (uint16_t)bms_config.max_cell_volt_mV);
+    put_u16(payload, &offset, (uint16_t)(current_soc * 100.0f + 0.5f));   /* SOC 0.01% */
 
     /* 有效位图：哪个 (group,channel) 槽位有真实电芯。位序=槽位序号，小端填位。
-     * group 从 1 计，只有 group<=TOTAL_IC 且非空位才置位。 */
+     * group 从 1 计，只有 group<=total_ic 且非空位才置位。 */
     for(uint8_t group = 1; group <= CELL_GROUPS; group++) {
         for(uint8_t channel = 1; channel <= CELL_CHANNELS; channel++) {
             uint16_t slot = (uint16_t)((group - 1U) * CELL_CHANNELS + (channel - 1U));
-            if(group <= TOTAL_IC && cell_slot_valid(group, channel)) {
+            if(group <= (uint8_t)bms_config.total_ic && cell_slot_valid(group, channel)) {
                 payload[offset + slot / 8U] |= (uint8_t)(1U << (slot % 8U));
             }
         }
@@ -275,7 +284,7 @@ void telemetry_serial_send_periodic(void) {
             uint8_t one_based_group = (uint8_t)(group + 1U);
             uint8_t one_based_channel = (uint8_t)(channel + 1U);
             uint16_t value = 0;
-            if(group < TOTAL_IC && cell_slot_valid(one_based_group, one_based_channel)) {
+            if(group < (uint8_t)bms_config.total_ic && cell_slot_valid(one_based_group, one_based_channel)) {
                 value = (uint16_t)(cell_codes[group][channel] / 10U);
             }
             put_u16(payload, &offset, value);
@@ -286,7 +295,7 @@ void telemetry_serial_send_periodic(void) {
     for(uint8_t group = 0; group < TEMP_GROUPS; group++) {
         for(uint8_t channel = 0; channel < TEMP_CHANNELS; channel++) {
             int16_t value = 0;
-            if(group < TOTAL_IC) {
+            if(group < (uint8_t)bms_config.total_ic) {
                 value = temp[group][channel];
             }
             put_i16(payload, &offset, value);
@@ -423,6 +432,76 @@ static void handle_frame(uint8_t port_index, const uint8_t *frame, uint16_t len)
         int ok = ts_sm_serial_clear_errors();
         send_ack(seq, msg_type, ok ? ACK_OK : ACK_REJECTED, ok ? 0U : 1U);
     }
+    else if(msg_type == MSG_GET_CONFIGURATION) {
+        /* 空载荷：把当前 bms_config 的 30 个 i32 字段整包回发（MSG_CONFIGURATION），
+         * 再补一条 ACK。先发数据后发 ACK，上位机按这两帧完成一次读取。 */
+        if(payload_len != 0U) {
+            send_ack(seq, msg_type, ACK_BAD_LENGTH, 0);
+            return;
+        }
+        send_configuration();
+        send_ack(seq, msg_type, ACK_OK, 0);
+    }
+    else if(msg_type == MSG_SET_CONFIGURATION) {
+        /* DATA = 30×i32 LE：整包替换配置。仅当 BMS 处于 INACTIVE 且三路 AIR 全断
+         * 时受理（reason=1 状态不允许 / 2 字段越界 / 3 落盘失败）。 */
+        BmsConfig candidate;
+        if(!decode_configuration(payload, payload_len, &candidate)) {
+            send_ack(seq, msg_type, ACK_BAD_LENGTH, 0);
+            return;
+        }
+        /* 持锁保证"检查状态 → 换配置"之间控制线程不会起一次状态迁移，也让
+         * bms_config 整结构体的替换对控制线程是原子的。锁内不碰 UART。
+         * 注意 bms_config_save 写满一个扇区时会整体擦除（阻塞可达秒级），
+         * 但那是 flash 操作本身对同 bank 取指的停顿，加锁并不额外加剧。 */
+        bms_state_lock();
+        if(ts_state.current_state != TS_INACTIVE || ts_state.target_state != TS_INACTIVE ||
+           ts_sm_get_air_bits() != 0U) {
+            bms_state_unlock();
+            send_ack(seq, msg_type, ACK_REJECTED, 1U);
+            return;
+        }
+        if(!bms_config_is_valid(&candidate)) {
+            bms_state_unlock();
+            send_ack(seq, msg_type, ACK_REJECTED, 2U);
+            return;
+        }
+        int total_ic_changed = (candidate.total_ic != bms_config.total_ic);
+        if(!bms_config_save(&candidate)) {
+            bms_state_unlock();
+            send_ack(seq, msg_type, ACK_REJECTED, 3U);
+            return;
+        }
+        /* 链长变了必须重新唤醒/初始化 AFE 链，否则后续读数按旧链长解析 */
+        if(total_ic_changed) {
+            slaves_reinitialize_for_config();
+        }
+        bms_state_unlock();
+        send_configuration();
+        send_ack(seq, msg_type, ACK_OK, 0);
+    }
+    else if(msg_type == MSG_UPDATE_SOC_FROM_OCV) {
+        /* 空载荷：用当前最低单体电压查 OCV 表反推 SOC 并落盘（人工校正用）。
+         * 失败 reason=1（电压无效/写 flash 失败）。 */
+        if(payload_len != 0U) {
+            send_ack(seq, msg_type, ACK_BAD_LENGTH, 0);
+            return;
+        }
+        bms_state_lock();
+        int ok = soc_update_from_ocv(min_voltage);
+        bms_state_unlock();
+        send_ack(seq, msg_type, ok ? ACK_OK : ACK_REJECTED, ok ? 0U : 1U);
+    }
+    else if(msg_type == MSG_SOFTWARE_RESET) {
+        /* 空载荷：回 ACK 后延时 20ms 让 ACK 发完，再纯软复位（不进 bootloader）。 */
+        if(payload_len != 0U) {
+            send_ack(seq, msg_type, ACK_BAD_LENGTH, 0);
+            return;
+        }
+        send_ack(seq, msg_type, ACK_OK, 0);
+        BMS_DELAY_MS(20U);
+        request_software_reset();
+    }
 #if BMS_TEST_HOOKS
     else if(msg_type == MSG_SET_INPUT) {
         /* DATA = [sig_id, value]，逻辑验证用：注入 BMS 数字量输入 */
@@ -458,7 +537,7 @@ static void handle_frame(uint8_t port_index, const uint8_t *frame, uint16_t len)
             return;
         }
         uint8_t item = payload[0];
-        int32_t value = get_i32(&payload[1]);
+        int32_t value = (int32_t)get_u32(&payload[1]);
         int ok;
         /* item 落在哪个域，就分派给哪个监视器的注入口 */
         if(item <= BMS_FI_SHUNT_MAX) {
@@ -508,6 +587,41 @@ static void request_bootloader_reset(void) {
     __DSB();
     NVIC_SystemReset();
     __builtin_unreachable();
+}
+
+/* 纯软复位：不写备份寄存器，bootloader 不会拦截，复位后回到 APP 自身。
+ * 供 0x18 命令用（改完配置后让其生效）。 */
+static void request_software_reset(void) {
+    __DSB();
+    NVIC_SystemReset();
+    __builtin_unreachable();
+}
+
+/* 上报整份配置：MSG_CONFIGURATION 的载荷就是 30 个 i32 的顺序展开。
+ * 直接按字段序取址展开，与 decode_configuration 对称。 */
+static void send_configuration(void) {
+    uint8_t payload[sizeof(BmsConfig)];
+    uint16_t offset = 0U;
+    const int32_t *fields = (const int32_t *)&bms_config;
+
+    for(uint32_t index = 0U; index < BMS_CONFIG_FIELD_COUNT; ++index) {
+        put_i32(payload, &offset, fields[index]);
+    }
+    send_frame(MSG_CONFIGURATION, tx_seq++, payload, offset);
+}
+
+/* 解析 0x16 的载荷。长度必须恰为 sizeof(BmsConfig)，逐字段小端取 i32。
+ * 只做反序列化，越界由 bms_config_is_valid 判断。 */
+static int decode_configuration(const uint8_t *payload, uint16_t payload_len, BmsConfig *config) {
+    int32_t *fields = (int32_t *)config;
+
+    if(config == 0 || payload_len != sizeof(BmsConfig)) {
+        return 0;
+    }
+    for(uint32_t index = 0U; index < BMS_CONFIG_FIELD_COUNT; ++index) {
+        fields[index] = (int32_t)get_u32(&payload[index * sizeof(int32_t)]);
+    }
+    return 1;
 }
 
 /* 回 ACK：payload=[命令序号(2), 命令类型(1), result(1), reason(1)]。 */
@@ -597,12 +711,12 @@ static void put_i32(uint8_t *payload, uint16_t *offset, int32_t value) {
     put_u32(payload, offset, (uint32_t)value);
 }
 
-/* 反序列化：只用到 u16（LEN/CRC/SEQ）与 i32（注入值）。 */
+/* 反序列化：只用到 u16（LEN/CRC/SEQ）与 u32（注入值/配置字段）。 */
 static uint16_t get_u16(const uint8_t *data) {
     return (uint16_t)(data[0] | ((uint16_t)data[1] << 8));
 }
 
-static int32_t get_i32(const uint8_t *data) {
-    return (int32_t)((uint32_t)data[0] | ((uint32_t)data[1] << 8) |
-                     ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24));
+static uint32_t get_u32(const uint8_t *data) {
+    return (uint32_t)data[0] | ((uint32_t)data[1] << 8) |
+           ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
 }

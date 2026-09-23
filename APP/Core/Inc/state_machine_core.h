@@ -19,10 +19,13 @@
  * 三条硬约束（改这个文件时必须守住）：
  *   1. 本文件不得出现任何平台头（HAL / RT-Thread / 具体芯片寄存器）。
  *      一旦出现，tools/fsm_test 的宿主编译会立刻失败——这是刻意的守门人。
+ *      唯一的例外是 bms_config.h：它只含 <stdint.h>/<stdbool.h>，无平台依赖，
+ *      提供运行时可改的时间阈值（见下）。
  *   2. ts_fsm_step() 除读写 ctx/out 外不得有任何副作用；时间一律由 in->now 传入，
- *      不得调用 HAL_GetTick() 之类。
+ *      不得调用 HAL_GetTick() 之类。读 bms_config 是纯读，不违反本条。
  *   3. 行为必须与原实现逐拍等价：每条迁移条件、每个引脚电平、每个时间阈值都照抄。
- *      这是安全相关模块，不允许"顺手修"。
+ *      这是安全相关模块，不允许"顺手修"。阈值改由 bms_config 提供后，其编译期
+ *      默认值与原 state_machine.h 逐字相同（见 bms_config.c 的 default_config）。
  *
  * 【原实现对照】约定
  * ------------------------------------------------------------------------
@@ -35,20 +38,20 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "bms_config.h"
+
 /* --------------------------------------------------------------------------
- * 时间常量
- * 数值一律照抄原 state_machine.h，一个都不能动——它们直接决定迁移边界在哪一拍发生。
+ * 时间阈值
+ * 七个可调阈值（DISCHARGE_DURATION / NO_ERROR_TIME / AIR_CLOSE_WAIT /
+ * PRECHARGE_95_WAIT_TIME / PRE_HOLD_TIME / MAX_STATE_HOLD_TIME / DRIVE_MODE_TIMEOUT）
+ * 已全部改由 bms_config 提供，可经串口 0x16 改写并掉电保持；编译期默认值与原
+ * state_machine.h 逐字相同（bms_config.c 的 default_config）。内核里直接读
+ * bms_config.<字段>，不再有宏。
+ *
+ * 下面这些**不可**运行时改：
  * -------------------------------------------------------------------------- */
 #define MIN_VEHICLE_SIDE_VOLTAGE 150    //mV：预充判定里"车辆侧电压至少要有这么多"的下限
                                         //    仅用于挡住"车辆侧根本没接线（~0V）"的噪声
-#define DISCHARGE_DURATION 5000         //ms：DISCHARGE 态驻留时长；也是 ERROR 恢复时
-                                        //    "回 DISCHARGE 还是回 INACTIVE"的分水岭
-#define NO_ERROR_TIME 1000              //ms：ERROR 态下错误消失后，需连续无错多久才允许恢复
-#define AIR_CLOSE_WAIT 10               //ms：同一继电器两次闭合之间的最小间隔（消抖/防拍合）
-#define PRECHARGE_95_WAIT_TIME 5000     //ms：预充超时窗口。5s 内车辆侧到不了 0.95·vbat 就报错
-#define PRE_HOLD_TIME 200               //ms：PRE_HOLD 态驻留时长（等继电器吸合稳定再合主接触器）
-#define MAX_STATE_HOLD_TIME 500         //ms：POWER_UP 落下后，ACTIVE 还能维持多久（延时下电）
-#define DRIVE_MODE_TIMEOUT 2000         //ms：行车模式心跳超时；本内核不读它，仅驱动层用
 #define SERIAL_CONTROL_TIMEOUT 1000U    //ms：串口控制（target/manual AIR）失联超时后交还 GPIO
 #define CHARGE_MAX_REVERSE_CURRENT 300  //mA：CHARGE 态允许的反向(放电)电流上限。
                                         //    按符号约定充电为正，故正常应 ≥0；只有反向电流

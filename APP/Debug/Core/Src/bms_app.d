@@ -38,11 +38,12 @@ Core/Src/bms_app.o: ../Core/Src/bms_app.c \
  ../Core/Inc/can.h ../Core/Inc/main.h ../Core/Inc/can_custom.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h \
  ../Core/Inc/state_machine.h ../Core/Inc/state_machine_core.h \
- ../Core/Inc/main.h ../Core/Inc/shunt_monitor.h \
- ../Core/Inc/slave_monitor.h \
+ ../Core/Inc/bms_config.h \
  D:/dkt_stm32/DKT/BMS_RTT/APP/Hardware/LTC6804-1/LTC68041.h \
- ../Core/Inc/soc_estimation.h ../Core/Inc/state_machine.h \
- ../Core/Inc/telemetry_serial.h ../Core/Inc/usart.h
+ ../Core/Inc/main.h ../Core/Inc/shunt_monitor.h \
+ ../Core/Inc/slave_monitor.h ../Core/Inc/soc_estimation.h \
+ ../Core/Inc/state_machine.h ../Core/Inc/telemetry_serial.h \
+ ../Core/Inc/usart.h
 ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtthread.h:
 ../RT-Thread/rtconfig.h:
 ../Middlewares/Third_Party/RealThread_RTOS_RT-Thread/include/rtdebug.h:
@@ -86,10 +87,11 @@ Core/Src/bms_app.o: ../Core/Src/bms_app.c \
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h:
 ../Core/Inc/state_machine.h:
 ../Core/Inc/state_machine_core.h:
+../Core/Inc/bms_config.h:
+D:/dkt_stm32/DKT/BMS_RTT/APP/Hardware/LTC6804-1/LTC68041.h:
 ../Core/Inc/main.h:
 ../Core/Inc/shunt_monitor.h:
 ../Core/Inc/slave_monitor.h:
-D:/dkt_stm32/DKT/BMS_RTT/APP/Hardware/LTC6804-1/LTC68041.h:
 ../Core/Inc/soc_estimation.h:
 ../Core/Inc/state_machine.h:
 ../Core/Inc/telemetry_serial.h:

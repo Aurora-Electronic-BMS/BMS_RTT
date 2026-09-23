@@ -2,16 +2,17 @@
  * slave_monitor.c —— AFE（LTC6804）电芯电压/温度采集与保护
  *
  * 数据流：控制线程每 150ms 调 slaves_check() → slaves_read() 采一轮 AFE →
- * 遍历 TOTAL_IC 个 IC × 12 通道算 min/max 电压与温度、累加 Bat_Volt → 三/四个
- * ErrorMonitor 去抖 → ts_sm_set_error_source(TS_ERROR_SOURCE_SLAVE)。
+ * 遍历 bms_config.total_ic 个 IC × 12 通道算 min/max 电压与温度、累加 Bat_Volt →
+ * 三/四个 ErrorMonitor 去抖 → ts_sm_set_error_source(TS_ERROR_SOURCE_SLAVE)。
  *
- * 当前 TOTAL_IC=12：12 IC × 12 通道 − 6 个空位（偶数 IC 的第 12 通道）= 138 芯。
- * 走桩件（LTC68041_stub.c）时每芯 3700mV，合计 Bat_Volt=510600mV，AUX 换算约 25℃。
- * 故障注入用 afe_inject_* 覆盖读数。
+ * total_ic 由 bms_config 决定（默认 12）：12 IC × 12 通道 − 6 个空位（偶数 IC 的第 12
+ * 通道）= 138 芯。走桩件（LTC68041_stub.c）时每芯 3700mV，合计 Bat_Volt=510600mV，
+ * AUX 换算约 25℃。故障注入用 afe_inject_* 覆盖读数。
  *
  * 锁：电芯数据/温度被本线程写、遥测线程读，全程在 state_mtx 内完成。
  * ========================================================================== */
 #include "slave_monitor.h"
+#include "bms_config.h"
 #include "bms_io.h"
 #include "shunt_monitor.h"
 #include "LTC68041.h"
@@ -26,7 +27,7 @@
 #include <string.h>
 #include <math.h>
 
-SlaveMessage slaves[TOTAL_IC];   //从机数组变量
+SlaveMessage slaves[BMS_MAX_IC];   //从机数组变量
 uint16_t min_voltage = 0xFFFF;
 uint16_t max_voltage;
 int16_t max_temp;
@@ -35,21 +36,36 @@ uint16_t min_voltage_error = 0xFFFF;
 uint16_t max_voltage_error;
 int16_t max_temp_error;
 int16_t min_temp_error;
-uint16_t cell_codes[TOTAL_IC][12];   //最近一轮原始电芯码（遥测上报用，已除 10 得 mV）
-static uint16_t cell_buffer[TOTAL_IC][12];   //本拍读缓冲（经注入覆盖后拷入 cell_codes）
-static uint16_t gpiocode[TOTAL_IC][6];       //AUX 原始值（温度）
-int16_t temp[TOTAL_IC][6];                   //换算后温度（℃）
+uint16_t cell_codes[BMS_MAX_IC][12];   //最近一轮原始电芯码（遥测上报用，已除 10 得 mV）
+static uint16_t cell_buffer[BMS_MAX_IC][12];   //本拍读缓冲（经注入覆盖后拷入 cell_codes）
+static uint16_t gpiocode[BMS_MAX_IC][6];       //AUX 原始值（温度）
+int16_t temp[BMS_MAX_IC][6];                   //换算后温度（℃）
 uint8_t pec = 0;
 static int slave_comm_error = 0;
 int32_t Bat_Volt;             //全包电压合计（mV），= 所有电芯之和
 
 int slave_error = 0;          //从机聚合错误标志（对外/上报）
 
-/* 四个保护的去抖：均 1000ms、锁存。 */
-static ErrorMonitor slave_overvolt_monitor = ERROR_MONITOR_INIT(1000, ERROR_LATCH_ENABLE);
-static ErrorMonitor slave_undervolt_monitor = ERROR_MONITOR_INIT(1000, ERROR_LATCH_ENABLE);
-static ErrorMonitor slave_overtemp_monitor = ERROR_MONITOR_INIT(1000, ERROR_LATCH_ENABLE);
-static ErrorMonitor slave_comm_monitor = ERROR_MONITOR_INIT(1000, ERROR_LATCH_ENABLE);
+/* 四个保护监视器均锁存；去抖时长来自 bms_config，见 slaves_apply_config()。 */
+static ErrorMonitor slave_overvolt_monitor = { .latch = ERROR_LATCH_ENABLE, };
+static ErrorMonitor slave_undervolt_monitor = { .latch = ERROR_LATCH_ENABLE, };
+static ErrorMonitor slave_overtemp_monitor = { .latch = ERROR_LATCH_ENABLE, };
+static ErrorMonitor slave_comm_monitor = { .latch = ERROR_LATCH_ENABLE, };
+
+/* 把配置里的确认时长刷进监视器；bms_config_init/bms_config_apply 会在校验通过后调用。 */
+void slaves_apply_config(void) {
+    slave_overvolt_monitor.delay_ms = (uint32_t)bms_config.slave_overvolt_confirm_ms;
+    slave_undervolt_monitor.delay_ms = (uint32_t)bms_config.slave_undervolt_confirm_ms;
+    slave_overtemp_monitor.delay_ms = (uint32_t)bms_config.slave_overtemp_confirm_ms;
+    slave_comm_monitor.delay_ms = (uint32_t)bms_config.slave_comm_confirm_ms;
+}
+
+/* total_ic 变了：重排从机数组并按新链长重配 AFE（LTC6804_initialize 会按
+ * bms_config.total_ic 重写配置寄存器）。 */
+void slaves_reinitialize_for_config(void) {
+    slaves_init();
+    LTC6804_initialize();
+}
 
 #if BMS_TEST_HOOKS
 /* AFE 故障注入覆盖值：-1 = 不覆盖（用真实/桩件读数） */
@@ -82,7 +98,7 @@ int slaves_inject(uint8_t item, int32_t value) {
 
 //从机初始化
 void slaves_init() {
-    for(int i = 0; i < TOTAL_IC; i++) {
+    for(int i = 0; i < (int)bms_config.total_ic; i++) {
         slaves[i].id = i + 1;
         slaves[i].error.kind = SLAVE_ERR_NONE;
         slaves[i].min_voltage = 0;
@@ -106,16 +122,16 @@ void slaves_clear_errors() {
 //启动AFE检测
 /* 采一轮：ADC 转换电芯电压与 AUX，读回后应用注入覆盖，再拷入 cell_codes 并做 PEC 校验。 */
 void slaves_read() {
-    //wakeup_idle(TOTAL_IC);
+    //wakeup_idle(bms_config.total_ic);
     LTC6804_adcv();
-    //HAL_Delay(3);
-    pec = LTC6804_rdcv(0, TOTAL_IC, cell_buffer);
+    HAL_Delay(2);
+    pec = LTC6804_rdcv(0, (uint8_t)bms_config.total_ic, cell_buffer);
 #if BMS_TEST_HOOKS
     if(afe_inject_pec >= 0) {
         pec = (uint8_t)afe_inject_pec;
     }
     if(afe_inject_cell_raw >= 0) {
-        for(uint8_t i = 0; i < TOTAL_IC; i++) {
+        for(uint8_t i = 0; i < (uint8_t)bms_config.total_ic; i++) {
             for(uint8_t j = 0; j < 12U; j++) {
                 cell_buffer[i][j] = (uint16_t)afe_inject_cell_raw;
             }
@@ -124,14 +140,13 @@ void slaves_read() {
 #endif
     /* cell_codes 由 PEC_volt_check 在校验通过时拷贝；PEC 坏时保留上一轮好数据。 */
     PEC_volt_check(pec, cell_buffer);
-    //HAL_Delay(3);
-    //wakeup_idle(TOTAL_IC);
+    //wakeup_idle(bms_config.total_ic);
     LTC6804_adax();
-    //HAL_Delay(3);
-    LTC6804_rdaux(0, TOTAL_IC, gpiocode);
+    HAL_Delay(2);
+    LTC6804_rdaux(0, (uint8_t)bms_config.total_ic, gpiocode);
 #if BMS_TEST_HOOKS
     if(afe_inject_aux_raw >= 0) {
-        for(uint8_t i = 0; i < TOTAL_IC; i++) {
+        for(uint8_t i = 0; i < (uint8_t)bms_config.total_ic; i++) {
             for(uint8_t k = 0; k < 6U; k++) {
                 gpiocode[i][k] = (uint16_t)afe_inject_aux_raw;
             }
@@ -155,7 +170,7 @@ void slaves_check() {
     min_voltage = 0xFFFF;
     max_temp = 0x0000;
     min_temp = 0x7FFF;
-    for(int i = 0; i < TOTAL_IC; i++) {
+    for(int i = 0; i < (int)bms_config.total_ic; i++) {
         for(int j = 0; j < 12; j++) {     //Skip No.24 cell
             /* 偶数编号 IC(i=1,3,...,11) 的第 12 通道无电芯，跳过 */
             if((i == 1 || i == 3 || i == 5 || i == 7 || i == 9 || i == 11) && j == 11) {
@@ -187,16 +202,16 @@ void slaves_check() {
     }
     Bat_Volt = total_volt;
 
-    /* 过压：任一芯 > MAX_CELL_VOLT(4200mV)。 */
-    if(error_monitor_update(&slave_overvolt_monitor, max_voltage > MAX_CELL_VOLT)) {
+    /* 过压：任一芯 > bms_config.max_cell_volt_mV。 */
+    if(error_monitor_update(&slave_overvolt_monitor, max_voltage > bms_config.max_cell_volt_mV)) {
         kind = (TSErrorKind)(kind | TS_ERROR_SLAVE_OVERVOLT);
     }
-    /* 欠压：任一芯 < MIN_CELL_VOLT(3200mV)。 */
-    if(error_monitor_update(&slave_undervolt_monitor, min_voltage < MIN_CELL_VOLT)) {
+    /* 欠压：任一芯 < bms_config.min_cell_volt_mV。 */
+    if(error_monitor_update(&slave_undervolt_monitor, min_voltage < bms_config.min_cell_volt_mV)) {
         kind = (TSErrorKind)(kind | TS_ERROR_SLAVE_UNDERVOLT);
     }
-    /* 过温：任一芯 > MAX_CELL_TEMP(35℃)。 */
-    if(error_monitor_update(&slave_overtemp_monitor, max_temp > MAX_CELL_TEMP)) {
+    /* 过温：任一芯 > bms_config.max_cell_temp_C。 */
+    if(error_monitor_update(&slave_overtemp_monitor, max_temp > bms_config.max_cell_temp_C)) {
         kind = (TSErrorKind)(kind | TS_ERROR_SLAVE_OVERTEMP);
     }
     /* AFE 内部通信错误：PEC 坏且有放电电流时置的 slave_comm_error。 */
@@ -223,9 +238,9 @@ int16_t temp_cal(uint16_t adc_value) {
 /* PEC 校验结果处理：pec==255 表示读回数据损坏；仅在**有放电电流**（<-1A）时判定为
  * 真通信错误并点亮 STATUS_4（区分"真故障"与"静默期读噪声"）。pec 正常才把本拍缓冲
  * 拷入 cell_codes（PEC 坏时保留上一轮好数据），并清标志与引脚。 */
-void PEC_volt_check(uint8_t pec, uint16_t cell[TOTAL_IC][12]) {
+void PEC_volt_check(uint8_t pec, uint16_t cell[BMS_MAX_IC][12]) {
     if(pec == 255) {
-        if(shunt_data.current < -PEC_CURR_THESHOLD) {
+        if(shunt_data.current < -bms_config.pec_current_threshold_mA) {
             slave_comm_error = 1;
             bms_out(STATUS_4_GPIO_Port, STATUS_4_Pin, GPIO_PIN_SET);
         }

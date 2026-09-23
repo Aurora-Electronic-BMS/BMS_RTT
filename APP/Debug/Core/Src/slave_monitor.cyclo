@@ -1,7 +1,8 @@
-../Core/Src/slave_monitor.c:60:5:slaves_inject	5
-../Core/Src/slave_monitor.c:81:6:slaves_init	2
-../Core/Src/slave_monitor.c:93:6:slaves_clear_errors	1
-../Core/Src/slave_monitor.c:105:6:slaves_read	8
-../Core/Src/slave_monitor.c:140:6:slaves_check	19
-../Core/Src/slave_monitor.c:210:9:temp_cal	1
-../Core/Src/slave_monitor.c:219:6:PEC_volt_check	3
+../Core/Src/slave_monitor.c:56:6:slaves_apply_config	1
+../Core/Src/slave_monitor.c:65:6:slaves_reinitialize_for_config	1
+../Core/Src/slave_monitor.c:100:6:slaves_init	2
+../Core/Src/slave_monitor.c:112:6:slaves_clear_errors	1
+../Core/Src/slave_monitor.c:124:6:slaves_read	1
+../Core/Src/slave_monitor.c:162:6:slaves_check	19
+../Core/Src/slave_monitor.c:232:9:temp_cal	1
+../Core/Src/slave_monitor.c:241:6:PEC_volt_check	3

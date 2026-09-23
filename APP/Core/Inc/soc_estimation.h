@@ -2,33 +2,37 @@
 #define INC_SOC_ESTIMATION_H
 
 /* ==========================================================================
- * soc_estimation.h —— SOC（荷电状态）估算：OCV 查表 + 安时积分
+ * soc_estimation.h —— SOC（荷电状态）估算：OCV 查表 + 安时积分 + 掉电保持
  *
- * 两路信息融合：
- *   - 静置（|电流| < NO_CURRENT_THRESHOLD 持续 NO_CURRENT_TIME）时，用最低单体
- *     电压查 OCV-SOC 表，作为"真值"校准。
- *   - 有电流时，对分流器累计电量 current_counter 做安时积分，在静置起点给出的
- *     基准上推算 SOC。
+ * 与 BMS_V1.0 新版（610b476）一致：
+ *   - 上电从 flash 读回上次持久化的 SOC（soc_storage_load，Sector 10）。
+ *   - 有电流时对分流器累计电量 current_counter 做安时积分；充电为正、放电为负。
+ *   - SOC 每变化 ≥1%（或到 0/100、或退出行车模式并断开高压）写回 flash。
+ *   - 串口 0x17 可用当前 min_voltage 走 OCV 表重定 SOC 并立即持久化。
+ *   - charge_finish 置 1 时下一拍把 SOC 校准为 100% 并持久化（充满标志）。
  *
- * 符号约定（与 shunt_monitor 一致）：**充电为正、放电为负**。因此安时积分
- * 是 current_soc = 基准 + ΔQ/Q_full*100；充电 ΔQ>0 → SOC 上升。
- * 输出 current_soc 已钳位到 [0,100]（%）。行为细节见 soc_estimation.c。
+ * 输出 current_soc 已钳位并四舍五入到 0.01%，范围 [0,100]。
  * ========================================================================== */
 
+#include <stdbool.h>
 #include <stdint.h>
 
-#define NO_CURRENT_THRESHOLD 200       /* mA：|电流| 低于此值视为静置 */
-#define NO_CURRENT_TIME 100000         /* ms：静置超过此时长改用 OCV 校准 */
-#define CELL_CAPACITY 50760000         /* mAs：安时积分满量程（≈14.1 Ah） */
+/* 单体标称容量，单位为 mAs。 */
+#define CELL_CAPACITY 14
+#define CELL_CAPACITY_MAS (CELL_CAPACITY * 1000 * 3600.0f)
 
 typedef struct {
-    uint16_t ocv;                      /* mV，单体开路电压 */
-    float    soc;                      /* % */
+    uint16_t ocv;
+    float soc;
 } ocv_soc;
 
-extern float current_soc;              /* %，钳位到 [0,100] */
+extern float current_soc;
+
+/* 置为 1 后，SOC 在主循环中被校准为 100.00% 并持久化。 */
+extern volatile uint8_t charge_finish;
 
 void soc_init(void);
 void soc_update(void);
+bool soc_update_from_ocv(uint16_t ocv_mV);
 
-#endif /* INC_SOC_ESTIMATION_H */
+#endif

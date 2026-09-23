@@ -37,10 +37,12 @@ BU_:
 VAL_TABLE_ TS_STATE 6 "TS_CHARGE" 5 "TS_PRE_HOLD" 4 "TS_ERROR" 3 "TS_DISCHARGE" 2 "TS_PRECHARGE" 1 "TS_ACTIVE" 0 "TS_INACTIVE" ;
 
 
-BO_ 771 STATUS3: 4 Vector__XXX
- SG_ Bus_Current : 7|32@0- (0.001,0) [0|0] "A" Vector__XXX
+BO_ 771 STATUS3: 8 Vector__XXX
+ SG_ Bus_volt : 39|32@0- (0.001,0) [0|0] "V" Vector__XXX
+ SG_ Bus_curr : 7|32@0- (0.001,0) [0|0] "A" Vector__XXX
 
 BO_ 770 STATUS2: 8 Vector__XXX
+ SG_ SOC : 39|16@0+ (0.01,0) [0|0] "%" Vector__XXX
  SG_ TS_ERROR_VOLTAGE_MISMATCH : 63|1@0+ (1,0) [0|0] "" Vector__XXX
  SG_ TS_ERROR_SLAVE_UNDERVOLT : 58|1@0+ (1,0) [0|0] "" Vector__XXX
  SG_ TS_ERROR_SLAVE_OVERVOLT : 57|1@0+ (1,0) [0|0] "" Vector__XXX
@@ -51,15 +53,15 @@ BO_ 770 STATUS2: 8 Vector__XXX
  SG_ TS_ERROR_PRECHARGE_TIMEOUT : 49|1@0+ (1,0) [0|0] "" Vector__XXX
  SG_ TS_ERROR_NONE : 56|1@0+ (1,0) [0|0] "" Vector__XXX
  SG_ TS_ERROR_INTERNAL_COMM_ERROR : 48|1@0+ (1,0) [0|0] "" Vector__XXX
- SG_ Power_Up_State : 36|1@0+ (1,0) [0|0] "" Vector__XXX
- SG_ shunt_error : 46|1@0+ (1,0) [0|0] "" Vector__XXX
- SG_ slave_error : 47|1@0+ (1,0) [0|0] "" Vector__XXX
- SG_ Pre_AIR_State : 37|1@0+ (1,0) [0|0] "" Vector__XXX
- SG_ Neg_AIR_State : 38|1@0+ (1,0) [0|0] "" Vector__XXX
- SG_ Pos_AIR_State : 39|1@0+ (1,0) [0|0] "" Vector__XXX
  SG_ Bat_volt : 7|32@0- (0.001,0) [0|0] "V" Vector__XXX
 
 BO_ 769 STATUS1: 8 Vector__XXX
+ SG_ slave_error : 11|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ shunt_error : 10|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Pre_AIR_State : 13|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Power_Up_State : 12|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Pos_AIR_State : 15|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Neg_AIR_State : 14|1@0+ (1,0) [0|0] "" Vector__XXX
  SG_ TS_Target_State : 6|3@0+ (1,0) [0|0] "" Vector__XXX
  SG_ SDC_closed : 7|1@0+ (1,0) [0|0] "" Vector__XXX
  SG_ Max_temp : 55|16@0- (1,0) [0|0] "¡æ" Vector__XXX

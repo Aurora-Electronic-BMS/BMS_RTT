@@ -56,6 +56,7 @@ set(BMS_APP_SOURCES
     Core/Src/bms_app.c
     Core/Src/rt_app.c
     Core/Src/bms_io.c
+    Core/Src/bms_config.c
     Core/Src/can_custom.c
     Core/Src/shunt_monitor.c
     Core/Src/slave_monitor.c
@@ -123,6 +124,7 @@ add_custom_target(firmware_artifacts ALL
             --out-dir $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>
             --name ${CMAKE_PROJECT_NAME}
             --app-start 0x08010000
+            --max-image-size 0xB0000
             --metadata-address 0x080FFF00
             --magic 0xB00710AD
     DEPENDS ${CMAKE_PROJECT_NAME}

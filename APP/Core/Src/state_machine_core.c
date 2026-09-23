@@ -119,7 +119,7 @@ static TSState fsm_precharge(TsFsmCtx *ctx, const TsFsmInputs *in, TsFsmOut *out
             ctx->precharge_95_finished_timestamp = in->now;
             return TS_PRE_HOLD;
         }
-        else if(in->now - ctx->precharge_start_timestamp >= PRECHARGE_95_WAIT_TIME) {
+        else if(in->now - ctx->precharge_start_timestamp >= (uint32_t)bms_config.precharge_95_wait_time_ms) {
             return fsm_precharge_timeout(ctx, out);
         }
         return TS_PRECHARGE;
@@ -135,7 +135,7 @@ static TSState fsm_precharge(TsFsmCtx *ctx, const TsFsmInputs *in, TsFsmOut *out
  * -------------------------------------------------------------------------- */
 static TSState fsm_discharge(TsFsmCtx *ctx, const TsFsmInputs *in, TsFsmOut *out) {
     (void)out;
-    if(in->now - ctx->discharge_begin_timestamp >= DISCHARGE_DURATION) {
+    if(in->now - ctx->discharge_begin_timestamp >= (uint32_t)bms_config.discharge_duration_ms) {
         return TS_INACTIVE;
     }
     return TS_DISCHARGE;
@@ -168,12 +168,12 @@ static TSState fsm_error(TsFsmCtx *ctx, const TsFsmInputs *in, TsFsmOut *out) {
         if(ctx->no_error_start == 0U) {
             ctx->no_error_start = in->now;      /* 哨兵：记首拍，本拍仍停在 ERROR */
         }
-        else if(in->now - ctx->no_error_start > NO_ERROR_TIME) {
+        else if(in->now - ctx->no_error_start > (uint32_t)bms_config.no_error_time_ms) {
             out->pins.write |= TS_PIN_NERROR;
             out->pins.nerror = 1U;
             out->pins.write |= TS_PIN_BMS_ERROR;
             out->pins.error = 0U;
-            if(in->now - ctx->no_error_start < DISCHARGE_DURATION) {
+            if(in->now - ctx->no_error_start < (uint32_t)bms_config.discharge_duration_ms) {
                 ctx->no_error_start = 0U;
                 ctx->discharge_begin_timestamp = in->now;
                 return TS_DISCHARGE;
@@ -235,7 +235,7 @@ static TSState fsm_pre_hold(TsFsmCtx *ctx, const TsFsmInputs *in, TsFsmOut *out)
         ctx->discharge_begin_timestamp = in->now;
         return TS_DISCHARGE;
     }
-    if(in->now - ctx->precharge_95_finished_timestamp >= PRE_HOLD_TIME) {
+    if(in->now - ctx->precharge_95_finished_timestamp >= (uint32_t)bms_config.pre_hold_time_ms) {
         if(out->next_target == TS_ACTIVE) {
             if(in->voltage_veh > 0.95 * in->voltage_bat) {
                 return TS_ACTIVE;
@@ -305,8 +305,8 @@ void ts_fsm_step(TsFsmCtx *ctx, const TsFsmInputs *in, TsFsmOut *out) {
      *   - POWER_UP 有效：target = charge_mode ? CHARGE : ACTIVE（charge_mode 由驱动层
      *     在取快照前跑 charge_cmd_check 刷新的全局变量带入）。
      *   - POWER_UP 落下且当前在 ACTIVE：先记 state_convert_timestamp（哨兵 0 表示"还没
-     *     开始计时"），并在 MAX_STATE_HOLD_TIME 内（<=，含端点）保持 target=ACTIVE，
-     *     否则清哨兵、target=INACTIVE。这是"延时下电"的保持窗口。 */
+     *     开始计时"），并在 bms_config.max_state_hold_time_ms 内（<=，含端点）保持
+     *     target=ACTIVE，否则清哨兵、target=INACTIVE。这是"延时下电"的保持窗口。 */
     if(ctx->control_mode == TS_CONTROL_GPIO) {
         if(in->power_up) {
             tgt = (in->charge_mode == 1U) ? TS_CHARGE : TS_ACTIVE;
@@ -316,7 +316,7 @@ void ts_fsm_step(TsFsmCtx *ctx, const TsFsmInputs *in, TsFsmOut *out) {
             tgt = TS_ACTIVE;
         }
         else if(cur == TS_ACTIVE &&
-                now - ctx->state_convert_timestamp <= MAX_STATE_HOLD_TIME) {
+                now - ctx->state_convert_timestamp <= (uint32_t)bms_config.max_state_hold_time_ms) {
             tgt = TS_ACTIVE;
         }
         else {

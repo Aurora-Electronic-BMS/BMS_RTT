@@ -1,6 +1,6 @@
-../Core/Src/shunt_monitor.c:30:6:shunt_init	4	static
-../Core/Src/shunt_monitor.c:44:6:shunt_clear_errors	8	static
-../Core/Src/shunt_monitor.c:55:6:shunt_check	16	static
-../Core/Src/shunt_monitor.c:90:13:shunt_accumulate_current	16	static
-../Core/Src/shunt_monitor.c:100:5:shunt_inject	16	static
-../Core/Src/shunt_monitor.c:130:6:shunt_handle_can_message	24	static
+../Core/Src/shunt_monitor.c:32:6:shunt_apply_config	4	static
+../Core/Src/shunt_monitor.c:39:6:shunt_init	4	static
+../Core/Src/shunt_monitor.c:53:6:shunt_clear_errors	8	static
+../Core/Src/shunt_monitor.c:64:6:shunt_check	16	static
+../Core/Src/shunt_monitor.c:99:13:shunt_accumulate_current	16	static
+../Core/Src/shunt_monitor.c:141:6:shunt_handle_can_message	24	static

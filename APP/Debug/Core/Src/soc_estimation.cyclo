@@ -1,4 +1,8 @@
-../Core/Src/soc_estimation.c:45:12:soc_has_current	3
-../Core/Src/soc_estimation.c:49:6:soc_init	1
-../Core/Src/soc_estimation.c:58:6:soc_update	10
-../Core/Src/soc_estimation.c:103:14:ocv_soc_update	5
+../Core/Src/soc_estimation.c:53:14:clamp_soc	3
+../Core/Src/soc_estimation.c:65:14:round_soc	1
+../Core/Src/soc_estimation.c:71:17:soc_to_int	1
+../Core/Src/soc_estimation.c:76:13:soc_save	2
+../Core/Src/soc_estimation.c:86:14:ocv_to_soc	5
+../Core/Src/soc_estimation.c:110:6:soc_update_from_ocv	2
+../Core/Src/soc_estimation.c:121:6:soc_init	3
+../Core/Src/soc_estimation.c:139:6:soc_update	13

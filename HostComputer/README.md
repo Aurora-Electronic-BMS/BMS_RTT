@@ -82,6 +82,12 @@ the relay checkboxes are enabled. In that mode the firmware accepts independent
 POS/NEG/PRE relay bits, while still rejecting nonzero relay closure when BMS
 faults are active or SDC is open. Heartbeat timeout exits the mode.
 
+## Runtime configuration
+
+The **Configuration** button reads and saves BMS protection and timing settings
+through the serial protocol. See [Configuration.md](Configuration.md) for the
+parameter list, storage behavior, safety rules, and protocol definition.
+
 The `Firmware Upgrade` button is immediately to the right of `Disconnect`.
 It selects an APP `.bin`, checks its size, stack pointer, and reset vector, and
 then performs the complete upgrade sequence: APP reset request, Bootloader

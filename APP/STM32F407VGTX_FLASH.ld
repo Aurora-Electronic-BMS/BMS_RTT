@@ -43,11 +43,13 @@ _Min_Heap_Size = 0x200; /* required amount of heap */
 _Min_Stack_Size = 0x400; /* required amount of stack */
 
 /* Memories definition */
+/* Sector 10 (0x080C0000..0x080DFFFF) stores runtime configuration.
+ * Sector 11 tail (0x080FFF00..0x080FFFFF) is Bootloader validity metadata. */
 MEMORY
 {
   CCMRAM    (xrw)    : ORIGIN = 0x10000000,   LENGTH = 64K
   RAM    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 128K
-  FLASH    (rx)    : ORIGIN = 0x8010000, LENGTH = 0xEFF00
+  FLASH    (rx)    : ORIGIN = 0x8010000, LENGTH = 0xB0000
 }
 
 /* Sections */
